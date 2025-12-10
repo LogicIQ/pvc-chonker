@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+spec:
+  containers:
+  - name: test
+    image: busybox
+    command: ["/bin/sh"]
+    args:
+    - -c
+    - |
+      while true; do
+        echo "=== $(date) ==="
+        echo "Filesystem info:"
+        df -h /data
+        echo "Inode info:"
+        df -i /data
+        echo "Mount info:"
+        mount | grep /data
+        echo "Disk usage:"
+        du -sh /data
+        echo "Creating test file..."
+        dd if=/dev/zero of=/data/testfile bs=1M count=100 2>/dev/null || true
+        echo "Current usage after write:"
+        df -h /data
+        df -i /data
+        echo "Cleaning up test file..."
+        rm -f /data/testfile
+        echo "Sleeping 30s..."
+        echo ""
+        sleep 30
+      done
+    volumeMounts:
+    - name: storage
+      mountPath: /data
+  volumes:
+  - name: storage
+    persistentVolumeClaim:
+      claimName: test-pvc

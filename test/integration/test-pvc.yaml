@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc
+  annotations:
+    pvc-chonker.io/enabled: "true"
+    pvc-chonker.io/threshold: "80%"
+    pvc-chonker.io/increase: "50%"
+    pvc-chonker.io/max-size: "10Gi"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: expandable-local
+  resources:
+    requests:
+      storage: 1Gi

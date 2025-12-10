@@ -1,0 +1,59 @@
+version: '3'
+
+vars:
+  IMG: logiciq/pvc-chonker:latest
+  CLUSTER_NAME: pvc-chonker-test
+
+tasks:
+  install-kind:
+    desc: Install kind if not present
+    status:
+      - which kind
+    cmds:
+      - curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+      - chmod +x ./kind
+      - sudo mv ./kind /usr/local/bin/kind
+
+  kind-create:
+    desc: Create kind cluster for testing
+    deps: [install-kind]
+    status:
+      - kind get clusters | grep -q {{.CLUSTER_NAME}}
+    cmds:
+      - mkdir -p /tmp/kind-storage
+      - kind create cluster --name {{.CLUSTER_NAME}} --config integration/kind-config.yaml
+
+  kind-delete:
+    desc: Delete kind cluster
+    cmds:
+      - kind delete cluster --name {{.CLUSTER_NAME}}
+
+  setup:
+    desc: Setup test environment in kind cluster
+    cmds:
+      - kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml
+      - kubectl apply -f integration/storage-class.yaml
+      - kubectl wait --for=condition=Ready pods -l app=local-path-provisioner -n local-path-storage --timeout=60s
+
+  deploy:
+    desc: Deploy operator to kind cluster
+    cmds:
+      - cd .. && task docker-build
+      - kind load docker-image {{.IMG}} --name {{.CLUSTER_NAME}}
+      - kubectl apply -R -f ../config/
+      - kubectl apply -f integration/test-pvc.yaml
+      - kubectl apply -f integration/test-pod.yaml
+
+  integration:
+    desc: Run full integration test
+    cmds:
+      - task: kind-create
+      - task: setup
+      - task: deploy
+      - echo "Integration test environment ready!"
+      - echo "Use 'kubectl get pvc' to check test PVC"
+
+  cleanup:
+    desc: Clean up test environment
+    cmds:
+      - task: kind-delete

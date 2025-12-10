@@ -1,0 +1,71 @@
+version: '3'
+
+includes:
+  test:
+    taskfile: ./test/Taskfile.yml
+    dir: ./test
+
+vars:
+  IMG: logiciq/pvc-chonker:latest
+  CLUSTER_NAME: pvc-chonker-test
+
+tasks:
+  default:
+    desc: Build the project
+    cmds:
+      - task: build
+
+  help:
+    desc: Display available tasks
+    cmds:
+      - task --list
+
+  fmt:
+    desc: Run go fmt against code
+    cmds:
+      - go fmt ./...
+
+  vet:
+    desc: Run go vet against code
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: Run tests
+    deps: [fmt, vet]
+    cmds:
+      - go test ./... -coverprofile cover.out
+
+  build:
+    desc: Build manager binary
+    deps: [fmt, vet]
+    cmds:
+      - go build -o bin/manager cmd/main.go
+
+  run:
+    desc: Run controller from your host
+    deps: [fmt, vet]
+    cmds:
+      - go run ./cmd/main.go
+
+  docker-build:
+    desc: Build docker image with the manager
+    deps: [build]
+    cmds:
+      - docker build -t {{.IMG}} .
+
+  docker-push:
+    desc: Push docker image with the manager
+    cmds:
+      - docker login
+      - docker push {{.IMG}}
+
+  deploy:
+    desc: Deploy controller to the K8s cluster specified in ~/.kube/config
+    cmds:
+      - kubectl apply -f config/
+
+  undeploy:
+    desc: Undeploy controller from the K8s cluster specified in ~/.kube/config
+    cmds:
+      - kubectl delete -f config/
