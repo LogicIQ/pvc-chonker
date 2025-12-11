@@ -46,6 +46,8 @@ func main() {
 	var minScaleUp string
 	var maxSize string
 	var dryRun bool
+	var logFormat string
+	var logLevel string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "Metrics endpoint address")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "Health probe endpoint address")
@@ -58,14 +60,25 @@ func main() {
 	flag.StringVar(&minScaleUp, "default-min-scale-up", "", "Default minimum scale-up amount")
 	flag.StringVar(&maxSize, "default-max-size", "", "Default maximum size limit")
 	flag.BoolVar(&dryRun, "dry-run", false, "Enable dry run mode (no actual PVC modifications)")
+	flag.StringVar(&logFormat, "log-format", "json", "Log format: json or console")
+	flag.StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, error")
 
 	opts := zap.Options{
-		Development: true,
+		Development: logFormat == "console",
+		TimeEncoder: "iso8601",
+	}
+	if logFormat == "console" {
+		opts.TimeEncoder = "rfc3339"
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	setupLog.Info("Logging configuration", "format", logFormat, "level", logLevel)
+	if dryRun {
+		setupLog.Info("Starting in DRY RUN mode - no PVC modifications will be made")
+	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -135,7 +148,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager")
+	setupLog.Info("starting manager", "dryRun", dryRun, "watchInterval", watchInterval)
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)

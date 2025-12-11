@@ -37,7 +37,7 @@ type PersistentVolumeClaimReconciler struct {
 // Start implements manager.Runnable for periodic reconciliation
 func (r *PersistentVolumeClaimReconciler) Start(ctx context.Context) error {
 	log := log.FromContext(ctx).WithName("pvcReconciler")
-	log.Info("Starting periodic reconciliation loop", "interval", r.WatchInterval)
+	log.Info("Starting periodic reconciliation loop", "interval", r.WatchInterval, "dryRun", r.DryRun)
 
 	ticker := time.NewTicker(r.WatchInterval)
 	defer ticker.Stop()
@@ -70,7 +70,7 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 		metrics.LastReconciliationTime.SetToCurrentTime()
 	}()
 
-	log.V(1).Info("Starting reconciliation for all PVCs")
+	log.V(1).Info("Starting reconciliation cycle", "dryRun", r.DryRun)
 
 	var pvcs corev1.PersistentVolumeClaimList
 	if err := r.Client.List(ctx, &pvcs); err != nil {
@@ -86,7 +86,7 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 
 	metrics.ReconciliationStatus.WithLabelValues("success").Set(1)
 	metrics.ReconciliationStatus.WithLabelValues("failure").Set(0)
-	log.V(1).Info("Completed reconciliation for all PVCs", "count", len(pvcs.Items))
+	log.V(1).Info("Completed reconciliation cycle", "pvcCount", len(pvcs.Items), "duration", time.Since(startTime))
 }
 
 // reconcilePVC processes a single PVC for expansion
@@ -128,12 +128,12 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	}
 
 	if volumeMetrics.UsagePercent < config.Threshold {
-		log.V(2).Info("Threshold not reached", "usage", volumeMetrics.UsagePercent, "threshold", config.Threshold)
+		log.V(2).Info("Threshold not reached", "usagePercent", fmt.Sprintf("%.1f%%", volumeMetrics.UsagePercent), "threshold", fmt.Sprintf("%.1f%%", config.Threshold))
 		return
 	}
 
 	metrics.ThresholdReachedTotal.WithLabelValues(pvc.Name, pvc.Namespace).Inc()
-	log.Info("Threshold reached, expanding PVC", "usage", volumeMetrics.UsagePercent, "threshold", config.Threshold, "dryRun", r.DryRun)
+	log.Info("Threshold reached - initiating expansion", "usagePercent", fmt.Sprintf("%.1f%%", volumeMetrics.UsagePercent), "threshold", fmt.Sprintf("%.1f%%", config.Threshold), "dryRun", r.DryRun)
 
 	if err := r.expandPVC(ctx, pvc, config); err != nil {
 		metrics.ExpansionFailuresTotal.WithLabelValues(pvc.Name, pvc.Namespace, "expansion_failed").Inc()
@@ -141,7 +141,7 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 		metrics.UpsizeStatus.WithLabelValues(pvc.Name, pvc.Namespace, "failure").Set(1)
 		metrics.UpsizeStatus.WithLabelValues(pvc.Name, pvc.Namespace, "success").Set(0)
 		r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, "ExpansionFailed", "Failed to expand PVC: %v", err)
-		log.Error(err, "Failed to expand PVC")
+		log.Error(err, "PVC expansion failed")
 		return
 	}
 
@@ -153,7 +153,7 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	newSize := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
 	r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, "Expanded", "PVC expanded from %s to %s (usage: %.1f%%)", 
 		currentSize.String(), newSize.String(), volumeMetrics.UsagePercent)
-	log.Info("PVC expanded successfully")
+	log.Info("PVC expansion completed successfully", "from", currentSize.String(), "to", newSize.String())
 }
 
 func (r *PersistentVolumeClaimReconciler) isPVCEligible(pvc *corev1.PersistentVolumeClaim) bool {

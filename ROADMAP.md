@@ -36,6 +36,8 @@ pvc-chonker.io/cooldown: "15m"                    # Cooldown between expansions
 - [x] **Prometheus Metrics**: Comprehensive metric collection ✅
 - [x] **Health Checks**: Readiness, liveness, and kubelet connectivity ✅
 - [x] **Event Recording**: Kubernetes events for all operations ✅
+- [x] **Structured Logging**: JSON logging with ISO8601 timestamps ✅
+- [x] **Dry Run Mode**: Test expansion logic without changes ✅
 
 ## Deployment & Operations
 
@@ -49,14 +51,12 @@ pvc-chonker.io/cooldown: "15m"                    # Cooldown between expansions
 - [ ] **PVCGroup Controller**: Manage group coordination
 - [ ] **Mutating Admission Webhook**: PVC creation interception
 - [ ] **Rate Limiting**: Limit concurrent expansion operations
-- [ ] **Dry Run Mode**: Test expansion logic without changes
 
 ## Monitoring & Reliability
 
 ### Enhanced Monitoring
 - [ ] **Grafana Dashboard**: Pre-built monitoring dashboard
 - [ ] **Alert Rules**: Prometheus alerting rules
-- [ ] **Structured Logging**: JSON logging with correlation IDs
 
 ### Testing
 - [ ] **Unit Tests**: Comprehensive test coverage (>80%)
@@ -115,8 +115,10 @@ type GlobalConfig struct {
 - **Periodic Reconciliation**: Monitors disk usage changes automatically
 - **Safety Mechanisms**: Cooldown protection, resize detection, storage class validation
 - **Comprehensive Monitoring**: Prometheus metrics, health checks, event recording
+- **Structured Logging**: JSON logging with ISO8601 timestamps and structured fields
+- **Dry Run Mode**: Test expansion logic without making actual PVC modifications
 - **Cloud Agnostic**: Works with any CSI-compatible storage
-- **Production Ready**: Error handling, RBAC, structured logging
+- **Production Ready**: Error handling, RBAC, comprehensive logging
 
 ## Success Metrics
 
@@ -127,6 +129,8 @@ type GlobalConfig struct {
 - [x] Comprehensive safety mechanisms ✅
 - [x] Production-ready monitoring and observability ✅
 - [x] Error handling and event recording ✅
+- [x] Structured JSON logging with ISO8601 timestamps ✅
+- [x] Dry run mode for testing without modifications ✅
 
 ### Next Milestones
 - [ ] Production deployment with Helm chart
