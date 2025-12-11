@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc
+  namespace: default
+  annotations:
+    pvc-chonker.io/enabled: "true"
+    pvc-chonker.io/threshold: "70%"
+    pvc-chonker.io/increase: "50%"
+    pvc-chonker.io/max-size: "10Gi"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: local-path
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-workload
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-workload
+  template:
+    metadata:
+      labels:
+        app: test-workload
+    spec:
+      containers:
+      - name: busybox
+        image: busybox:1.35
+        command: ["/bin/sh"]
+        args: ["-c", "while true; do dd if=/dev/zero of=/data/testfile bs=1M count=100 2>/dev/null || true; sleep 30; done"]
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: test-pvc

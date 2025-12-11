@@ -1,0 +1,8 @@
+version: '3'
+
+tasks:
+  run:
+    desc: Run integration tests
+    cmds:
+      - go mod tidy
+      - ginkgo -v
