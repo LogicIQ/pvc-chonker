@@ -2,9 +2,6 @@ package cache
 
 import (
 	"sync"
-	"time"
-
-	storagev1 "k8s.io/api/storage/v1"
 )
 
 type StorageClassCache struct {
@@ -34,5 +31,5 @@ func (c *StorageClassCache) Set(name string, expandable bool) {
 func (c *StorageClassCache) Clear() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.cache = make(map[string]*StorageClassEntry)
+	c.cache = make(map[string]bool)
 }

@@ -32,13 +32,15 @@ pvc-chonker.io/cooldown: "15m"                    # Cooldown between expansions
 - [x] **Safety Mechanisms**: Cooldown, resize detection, concurrent operation prevention ✅
 - [x] **Error Handling**: Graceful failure handling with events ✅
 - [x] **Async Processing**: Concurrent PVC processing with configurable parallelism ✅
+- [x] **Performance Optimization**: Storage class caching, kubelet metrics caching, PVC filtering ✅
 
 ### Monitoring & Observability
-- [x] **Prometheus Metrics**: Comprehensive metric collection ✅
+- [x] **Prometheus Metrics**: Comprehensive metric collection with Go runtime metrics ✅
 - [x] **Health Checks**: Readiness, liveness, and kubelet connectivity ✅
 - [x] **Event Recording**: Kubernetes events for all operations ✅
 - [x] **Structured Logging**: JSON logging with ISO8601 timestamps ✅
 - [x] **Dry Run Mode**: Test expansion logic without changes ✅
+- [x] **Performance Optimization**: Caching and efficient resource usage ✅
 
 ## Deployment & Operations
 
@@ -76,6 +78,13 @@ pvc-chonker.io/cooldown: "15m"                    # Cooldown between expansions
 
 ## Technical Architecture ✅ COMPLETED
 
+### Performance Optimizations ✅
+- **Storage Class Caching**: Eliminates redundant API calls within reconciliation cycles
+- **Kubelet Metrics Caching**: Single fetch per cycle instead of per-PVC (N→1 optimization)
+- **PVC Filtering**: Only processes managed PVCs (annotation-based filtering)
+- **Simplified Cache Logic**: Removed TTL complexity for 5-minute reconciliation intervals
+- **Go Runtime Metrics**: Standard process metrics (memory, CPU, goroutines) via Prometheus
+
 ### Annotation Configuration
 ```go
 type PVCConfig struct {
@@ -112,15 +121,16 @@ type GlobalConfig struct {
 
 ### Implemented Features ✅
 - **Complete Annotation System**: All configuration via annotations with global defaults
-- **Periodic Reconciliation**: Monitors disk usage changes automatically
-- **Async Processing**: Concurrent PVC processing with semaphore-based rate limiting
+- **Periodic Reconciliation**: Monitors disk usage changes automatically (5-minute intervals)
+- **Async Processing**: Concurrent PVC processing with semaphore-based rate limiting (default: 4 parallel)
 - **Safety Mechanisms**: Cooldown protection, resize detection, storage class validation
-- **Comprehensive Monitoring**: Prometheus metrics, health checks, event recording
+- **Comprehensive Monitoring**: Prometheus metrics with Go runtime metrics, health checks, event recording
+- **Performance Optimization**: Storage class caching, kubelet metrics caching (N→1 API calls per cycle)
 - **Structured Logging**: JSON logging with ISO8601 timestamps and structured fields
 - **Dry Run Mode**: Test expansion logic without making actual PVC modifications
-- **Comprehensive Testing**: Unit, integration, and E2E test suites
+- **Comprehensive Testing**: Unit, integration, and E2E test suites with full coverage
 - **Cloud Agnostic**: Works with any CSI-compatible storage
-- **Production Ready**: Error handling, RBAC, comprehensive logging
+- **Production Ready**: Error handling, RBAC, comprehensive logging, optimized performance
 
 ## Success Metrics
 
@@ -134,7 +144,8 @@ type GlobalConfig struct {
 - [x] Error handling and event recording ✅
 - [x] Structured JSON logging with ISO8601 timestamps ✅
 - [x] Dry run mode for testing without modifications ✅
-- [x] Comprehensive test coverage (unit, integration, E2E) ✅
+- [x] Comprehensive test coverage (unit, integration, E2E) with Go runtime metrics validation ✅
+- [x] Performance optimization with caching strategies (storage classes, kubelet metrics) ✅
 
 ### Next Milestones
 - [ ] Production deployment with Helm chart
@@ -151,9 +162,9 @@ type GlobalConfig struct {
 ## Risk Mitigation
 
 ### Technical Risks
-- **Kubelet Metrics Dependency**: Fallback mechanisms for metrics unavailability
+- **Kubelet Metrics Dependency**: Requires kubelet metrics endpoint availability ⚠️ CLUSTER REQUIREMENT
 - **Cloud Provider API Limits**: Rate limiting and retry logic
-- **Large Cluster Performance**: Efficient resource usage and caching
+- **Large Cluster Performance**: Efficient resource usage and caching ✅ OPTIMIZED
 
 ### Operational Risks
 - **Runaway Expansion**: Multiple safety mechanisms and limits

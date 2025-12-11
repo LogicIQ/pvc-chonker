@@ -1,9 +1,11 @@
 package metrics
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
@@ -11,7 +13,7 @@ func TestMetricsRegistration(t *testing.T) {
 	// Test that all metrics are properly registered
 	registry := prometheus.NewRegistry()
 	
-	// Register all metrics
+	// Register all metrics including Go runtime metrics
 	registry.MustRegister(
 		ExpansionsTotal,
 		ExpansionFailuresTotal,
@@ -23,6 +25,8 @@ func TestMetricsRegistration(t *testing.T) {
 		LastReconciliationTime,
 		LastUpsizeTime,
 		UpsizeStatus,
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 
 	// Verify metrics can be gathered without error
@@ -31,11 +35,11 @@ func TestMetricsRegistration(t *testing.T) {
 		t.Errorf("Failed to gather metrics: %v", err)
 	}
 
-	// Verify we have metrics registered (exact count may vary)
-	if len(metricFamilies) == 0 {
-		t.Error("Expected some metric families to be registered")
+	// Verify we have metrics registered (should include both custom and Go runtime metrics)
+	if len(metricFamilies) < 10 {
+		t.Errorf("Expected at least 10 metric families, got %d", len(metricFamilies))
 	}
-	t.Logf("Registered %d metric families", len(metricFamilies))
+	t.Logf("Registered %d metric families (including Go runtime metrics)", len(metricFamilies))
 }
 
 func TestExpansionsTotal(t *testing.T) {
@@ -159,4 +163,43 @@ func TestMetricLabels(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGoRuntimeMetrics(t *testing.T) {
+	// Test that Go runtime metrics are available
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+	)
+
+	metricFamilies, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("Failed to gather Go runtime metrics: %v", err)
+	}
+
+	// Check for expected Go runtime metrics
+	expectedMetrics := []string{
+		"go_memstats_",
+		"go_goroutines",
+		"process_cpu_seconds_total",
+		"process_resident_memory_bytes",
+	}
+
+	found := make(map[string]bool)
+	for _, mf := range metricFamilies {
+		for _, expected := range expectedMetrics {
+			if strings.HasPrefix(mf.GetName(), expected) || mf.GetName() == expected {
+				found[expected] = true
+			}
+		}
+	}
+
+	for _, expected := range expectedMetrics {
+		if !found[expected] {
+			t.Errorf("Expected Go runtime metric %s not found", expected)
+		}
+	}
+
+	t.Logf("Found %d Go runtime metric families", len(metricFamilies))
 }

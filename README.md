@@ -13,6 +13,22 @@ A cloud-agnostic Kubernetes operator for automatic PVC expansion. Works with any
 - **Resize Safety**: Checks for ongoing resize operations
 - **Configurable Defaults**: Global settings via flags/env vars with per-PVC overrides
 
+## Requirements
+
+### Cluster Prerequisites
+- **Kubernetes 1.19+**: CSI volume expansion support
+- **Kubelet Metrics**: Volume usage statistics endpoint (`/metrics`)
+- **CSI Driver**: Storage class with `allowVolumeExpansion: true`
+- **RBAC**: Permissions for PVC updates and storage class reads
+
+### Kubelet Metrics Availability
+- **Managed Clusters**: Usually enabled by default (EKS, GKE, AKS)
+- **Self-Managed**: May require kubelet configuration
+- **Verification**: Check `http://node-ip:10255/metrics` for volume stats
+- **Alternative Ports**: Some clusters use `:10250` (requires authentication)
+
+> **Note**: The operator requires access to kubelet metrics to monitor PVC usage. Most managed Kubernetes services enable this by default, but self-managed clusters may need additional configuration.
+
 ## Quick Start
 
 ### Integration Testing
