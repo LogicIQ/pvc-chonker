@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/logicIQ/pvc-chonker/pkg/annotations"
+	"github.com/logicIQ/pvc-chonker/pkg/cache"
 	"github.com/logicIQ/pvc-chonker/pkg/kubelet"
 	"github.com/logicIQ/pvc-chonker/pkg/metrics"
 
@@ -29,6 +30,8 @@ type PersistentVolumeClaimReconciler struct {
 	EventRecorder    record.EventRecorder
 	DryRun           bool
 	MaxParallel      int
+	metricsCache     *kubelet.MetricsCache
+	storageCache     *cache.StorageClassCache
 }
 
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;update;patch
@@ -39,9 +42,11 @@ func (r *PersistentVolumeClaimReconciler) Start(ctx context.Context) error {
 	log := log.FromContext(ctx).WithName("pvcReconciler")
 	log.Info("Starting periodic reconciliation loop", "interval", r.WatchInterval, "dryRun", r.DryRun)
 
+	// Initialize storage class cache
+	r.storageCache = cache.NewStorageClassCache()
+
 	ticker := time.NewTicker(r.WatchInterval)
 	defer ticker.Stop()
-
 
 	r.reconcileAll(ctx)
 
@@ -72,13 +77,38 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 
 	log.V(1).Info("Starting reconciliation cycle", "dryRun", r.DryRun)
 
+	// Clear cache for fresh data each cycle
+	r.storageCache.Clear()
+
 	var pvcs corev1.PersistentVolumeClaimList
-	if err := r.Client.List(ctx, &pvcs); err != nil {
+	listOpts := &client.ListOptions{
+		LabelSelector: client.MatchingLabels{},
+	}
+	if err := r.Client.List(ctx, &pvcs, listOpts); err != nil {
 		log.Error(err, "Failed to list PVCs")
 		metrics.ReconciliationStatus.WithLabelValues("failure").Set(1)
 		metrics.ReconciliationStatus.WithLabelValues("success").Set(0)
 		return
 	}
+
+	// Filter to only managed PVCs
+	managedPVCs := make([]corev1.PersistentVolumeClaim, 0, len(pvcs.Items))
+	for _, pvc := range pvcs.Items {
+		if pvc.Annotations != nil && pvc.Annotations[annotations.AnnotationEnabled] == "true" {
+			managedPVCs = append(managedPVCs, pvc)
+		}
+	}
+	pvcs.Items = managedPVCs
+
+	// Fetch all metrics once per reconciliation cycle
+	metricsCache, err := r.MetricsCollector.GetAllVolumeMetrics(ctx)
+	if err != nil {
+		log.Error(err, "Failed to fetch kubelet metrics")
+		metrics.ReconciliationStatus.WithLabelValues("failure").Set(1)
+		metrics.ReconciliationStatus.WithLabelValues("success").Set(0)
+		return
+	}
+	r.metricsCache = metricsCache
 
 	if r.MaxParallel <= 0 {
 		r.MaxParallel = 4
@@ -110,7 +140,7 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 
 	config, err := annotations.ParsePVCAnnotations(pvc, r.GlobalConfig)
 	if err != nil {
-		log.V(2).Info("PVC not managed", "reason", err.Error())
+		log.V(3).Info("PVC not managed", "reason", err.Error())
 		return
 	}
 
@@ -136,19 +166,20 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	}
 
 	namespacedName := types.NamespacedName{Namespace: pvc.Namespace, Name: pvc.Name}
-	volumeMetrics, err := r.MetricsCollector.GetVolumeMetrics(ctx, namespacedName)
-	if err != nil {
-		log.V(2).Info("Failed to get volume metrics", "error", err)
+	volumeMetrics, exists := r.metricsCache.Get(namespacedName)
+	if !exists {
+		log.V(2).Info("Volume metrics not found in cache")
+		metrics.PvcUnhealthyTotal.WithLabelValues(pvc.Name, pvc.Namespace).Inc()
 		return
 	}
 
 	if volumeMetrics.UsagePercent < config.Threshold {
-		log.V(2).Info("Threshold not reached", "usagePercent", fmt.Sprintf("%.1f%%", volumeMetrics.UsagePercent), "threshold", fmt.Sprintf("%.1f%%", config.Threshold))
+		log.V(3).Info("Threshold not reached", "usage", volumeMetrics.UsagePercent, "threshold", config.Threshold)
 		return
 	}
 
 	metrics.ThresholdReachedTotal.WithLabelValues(pvc.Name, pvc.Namespace).Inc()
-	log.Info("Threshold reached - initiating expansion", "usagePercent", fmt.Sprintf("%.1f%%", volumeMetrics.UsagePercent), "threshold", fmt.Sprintf("%.1f%%", config.Threshold), "dryRun", r.DryRun)
+	log.Info("Threshold reached - initiating expansion", "usage", volumeMetrics.UsagePercent, "threshold", config.Threshold, "dryRun", r.DryRun)
 
 	if err := r.expandPVC(ctx, pvc, config); err != nil {
 		metrics.ExpansionFailuresTotal.WithLabelValues(pvc.Name, pvc.Namespace, "expansion_failed").Inc()
@@ -186,12 +217,19 @@ func (r *PersistentVolumeClaimReconciler) isStorageClassExpandable(ctx context.C
 		return false
 	}
 
+	scName := *pvc.Spec.StorageClassName
+	if expandable, exists := r.storageCache.Get(scName); exists {
+		return expandable
+	}
+
 	var sc storagev1.StorageClass
-	if err := r.Get(ctx, types.NamespacedName{Name: *pvc.Spec.StorageClassName}, &sc); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Name: scName}, &sc); err != nil {
 		return false
 	}
 
-	return sc.AllowVolumeExpansion != nil && *sc.AllowVolumeExpansion
+	expandable := sc.AllowVolumeExpansion != nil && *sc.AllowVolumeExpansion
+	r.storageCache.Set(scName, expandable)
+	return expandable
 }
 
 func (r *PersistentVolumeClaimReconciler) expandPVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim, config *annotations.PVCConfig) error {
