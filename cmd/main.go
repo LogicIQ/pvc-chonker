@@ -11,6 +11,11 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -40,6 +45,7 @@ func main() {
 	var cooldown time.Duration
 	var minScaleUp string
 	var maxSize string
+	var dryRun bool
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "Metrics endpoint address")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "Health probe endpoint address")
@@ -51,6 +57,7 @@ func main() {
 	flag.DurationVar(&cooldown, "default-cooldown", 0, "Default cooldown period")
 	flag.StringVar(&minScaleUp, "default-min-scale-up", "", "Default minimum scale-up amount")
 	flag.StringVar(&maxSize, "default-max-size", "", "Default maximum size limit")
+	flag.BoolVar(&dryRun, "dry-run", false, "Enable dry run mode (no actual PVC modifications)")
 
 	opts := zap.Options{
 		Development: true,
@@ -93,6 +100,8 @@ func main() {
 		GlobalConfig:     globalConfig,
 		MetricsCollector: metricsCollector,
 		WatchInterval:    watchInterval,
+		EventRecorder:    mgr.GetEventRecorderFor("pvc-chonker"),
+		DryRun:           dryRun,
 	}
 
 	// Add the controller as a runnable for periodic reconciliation only
@@ -101,12 +110,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Add health checks
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
+	}
+
+	// Add custom health check for kubelet connectivity
+	if err := mgr.AddHealthzCheck("kubelet", func(req *http.Request) error {
+		ctx, cancel := context.WithTimeout(req.Context(), 5*time.Second)
+		defer cancel()
+		_, err := metricsCollector.GetVolumeMetrics(ctx, types.NamespacedName{Name: "test", Namespace: "test"})
+		// We expect this to fail for non-existent PVC, but connection should work
+		if err != nil && !strings.Contains(err.Error(), "not found") {
+			return fmt.Errorf("kubelet connectivity check failed: %w", err)
+		}
+		return nil
+	}); err != nil {
+		setupLog.Error(err, "unable to set up kubelet health check")
 		os.Exit(1)
 	}
 

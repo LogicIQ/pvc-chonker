@@ -10,11 +10,13 @@ import (
 	"github.com/logicIQ/pvc-chonker/pkg/metrics"
 
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"k8s.io/client-go/tools/record"
 )
 
 type PersistentVolumeClaimReconciler struct {
@@ -23,10 +25,13 @@ type PersistentVolumeClaimReconciler struct {
 	GlobalConfig     *annotations.GlobalConfig
 	MetricsCollector *kubelet.MetricsCollector
 	WatchInterval    time.Duration
+	EventRecorder    record.EventRecorder
+	DryRun           bool
 }
 
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;update;patch
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list
 //+kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
 // Start implements manager.Runnable for periodic reconciliation
@@ -99,6 +104,12 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 		return
 	}
 
+	if !r.isStorageClassExpandable(ctx, pvc) {
+		log.V(2).Info("Storage class does not allow volume expansion")
+		metrics.PvcUnhealthyTotal.WithLabelValues(pvc.Name, pvc.Namespace).Inc()
+		return
+	}
+
 	if annotations.IsPvcResizing(pvc) {
 		log.V(1).Info("PVC is currently resizing, skipping")
 		return
@@ -122,13 +133,14 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	}
 
 	metrics.ThresholdReachedTotal.WithLabelValues(pvc.Name, pvc.Namespace).Inc()
-	log.Info("Threshold reached, expanding PVC", "usage", volumeMetrics.UsagePercent, "threshold", config.Threshold)
+	log.Info("Threshold reached, expanding PVC", "usage", volumeMetrics.UsagePercent, "threshold", config.Threshold, "dryRun", r.DryRun)
 
 	if err := r.expandPVC(ctx, pvc, config); err != nil {
 		metrics.ExpansionFailuresTotal.WithLabelValues(pvc.Name, pvc.Namespace, "expansion_failed").Inc()
 		metrics.LastUpsizeTime.WithLabelValues(pvc.Name, pvc.Namespace).SetToCurrentTime()
 		metrics.UpsizeStatus.WithLabelValues(pvc.Name, pvc.Namespace, "failure").Set(1)
 		metrics.UpsizeStatus.WithLabelValues(pvc.Name, pvc.Namespace, "success").Set(0)
+		r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, "ExpansionFailed", "Failed to expand PVC: %v", err)
 		log.Error(err, "Failed to expand PVC")
 		return
 	}
@@ -137,6 +149,10 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	metrics.LastUpsizeTime.WithLabelValues(pvc.Name, pvc.Namespace).SetToCurrentTime()
 	metrics.UpsizeStatus.WithLabelValues(pvc.Name, pvc.Namespace, "success").Set(1)
 	metrics.UpsizeStatus.WithLabelValues(pvc.Name, pvc.Namespace, "failure").Set(0)
+	currentSize := pvc.Status.Capacity[corev1.ResourceStorage]
+	newSize := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+	r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, "Expanded", "PVC expanded from %s to %s (usage: %.1f%%)", 
+		currentSize.String(), newSize.String(), volumeMetrics.UsagePercent)
 	log.Info("PVC expanded successfully")
 }
 
@@ -150,7 +166,21 @@ func (r *PersistentVolumeClaimReconciler) isPVCEligible(pvc *corev1.PersistentVo
 	return true
 }
 
+func (r *PersistentVolumeClaimReconciler) isStorageClassExpandable(ctx context.Context, pvc *corev1.PersistentVolumeClaim) bool {
+	if pvc.Spec.StorageClassName == nil {
+		return false
+	}
+
+	var sc storagev1.StorageClass
+	if err := r.Get(ctx, types.NamespacedName{Name: *pvc.Spec.StorageClassName}, &sc); err != nil {
+		return false
+	}
+
+	return sc.AllowVolumeExpansion != nil && *sc.AllowVolumeExpansion
+}
+
 func (r *PersistentVolumeClaimReconciler) expandPVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim, config *annotations.PVCConfig) error {
+	log := log.FromContext(ctx).WithValues("pvc", pvc.Name, "namespace", pvc.Namespace)
 	currentSize := pvc.Status.Capacity[corev1.ResourceStorage]
 	newSize, err := config.CalculateNewSize(currentSize)
 	if err != nil {
@@ -162,11 +192,22 @@ func (r *PersistentVolumeClaimReconciler) expandPVC(ctx context.Context, pvc *co
 		return fmt.Errorf("new size %s exceeds max size %s", newSize.String(), config.MaxSize.String())
 	}
 
-	pvc.Spec.Resources.Requests[corev1.ResourceStorage] = newSize
-	annotations.UpdateLastExpansion(pvc)
+	if r.DryRun {
+		log.Info("DRY RUN: Would expand PVC", "currentSize", currentSize.String(), "newSize", newSize.String())
+		return nil
+	}
 
-	if err := r.Update(ctx, pvc); err != nil {
-		return fmt.Errorf("failed to update PVC: %w", err)
+	// Create a copy to avoid modifying the original
+	pvcCopy := pvc.DeepCopy()
+	pvcCopy.Spec.Resources.Requests[corev1.ResourceStorage] = newSize
+	annotations.UpdateLastExpansion(pvcCopy)
+
+	if err := r.Update(ctx, pvcCopy); err != nil {
+		// Enhanced error handling with specific error types
+		if client.IgnoreNotFound(err) != nil {
+			return fmt.Errorf("failed to update PVC spec: %w", err)
+		}
+		return fmt.Errorf("PVC not found during update: %w", err)
 	}
 
 	return nil
