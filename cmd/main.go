@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -48,6 +49,8 @@ func main() {
 	var dryRun bool
 	var logFormat string
 	var logLevel string
+	var concurrency int
+
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "Metrics endpoint address")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "Health probe endpoint address")
@@ -62,6 +65,7 @@ func main() {
 	flag.BoolVar(&dryRun, "dry-run", false, "Enable dry run mode (no actual PVC modifications)")
 	flag.StringVar(&logFormat, "log-format", "json", "Log format: json or console")
 	flag.StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, error")
+	flag.IntVar(&concurrency, "max-parallel", 4, "Maximum parallel PVC operations")
 
 	opts := zap.Options{
 		Development: logFormat == "console",
@@ -115,6 +119,7 @@ func main() {
 		WatchInterval:    watchInterval,
 		EventRecorder:    mgr.GetEventRecorderFor("pvc-chonker"),
 		DryRun:           dryRun,
+		MaxParallel:      concurrency,
 	}
 
 	// Add the controller as a runnable for periodic reconciliation only

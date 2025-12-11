@@ -31,6 +31,7 @@ pvc-chonker.io/cooldown: "15m"                    # Cooldown between expansions
 - [x] **Storage Class Validation**: Checks allowVolumeExpansion capability ✅
 - [x] **Safety Mechanisms**: Cooldown, resize detection, concurrent operation prevention ✅
 - [x] **Error Handling**: Graceful failure handling with events ✅
+- [x] **Async Processing**: Concurrent PVC processing with configurable parallelism ✅
 
 ### Monitoring & Observability
 - [x] **Prometheus Metrics**: Comprehensive metric collection ✅
@@ -50,7 +51,6 @@ pvc-chonker.io/cooldown: "15m"                    # Cooldown between expansions
 - [ ] **PVCPolicy Controller**: Manage PVC policy lifecycle
 - [ ] **PVCGroup Controller**: Manage group coordination
 - [ ] **Mutating Admission Webhook**: PVC creation interception
-- [ ] **Rate Limiting**: Limit concurrent expansion operations
 
 ## Monitoring & Reliability
 
@@ -59,9 +59,9 @@ pvc-chonker.io/cooldown: "15m"                    # Cooldown between expansions
 - [ ] **Alert Rules**: Prometheus alerting rules
 
 ### Testing
-- [ ] **Unit Tests**: Comprehensive test coverage (>80%)
-- [ ] **Integration Tests**: End-to-end testing with kind/minikube
-- [ ] **E2E Tests**: Real cluster validation
+- [x] **Unit Tests**: Comprehensive test coverage for core components ✅
+- [x] **Integration Tests**: envtest-based integration testing ✅
+- [x] **E2E Tests**: Kind-based end-to-end validation ✅
 
 ## Documentation & Security
 
@@ -113,10 +113,12 @@ type GlobalConfig struct {
 ### Implemented Features ✅
 - **Complete Annotation System**: All configuration via annotations with global defaults
 - **Periodic Reconciliation**: Monitors disk usage changes automatically
+- **Async Processing**: Concurrent PVC processing with semaphore-based rate limiting
 - **Safety Mechanisms**: Cooldown protection, resize detection, storage class validation
 - **Comprehensive Monitoring**: Prometheus metrics, health checks, event recording
 - **Structured Logging**: JSON logging with ISO8601 timestamps and structured fields
 - **Dry Run Mode**: Test expansion logic without making actual PVC modifications
+- **Comprehensive Testing**: Unit, integration, and E2E test suites
 - **Cloud Agnostic**: Works with any CSI-compatible storage
 - **Production Ready**: Error handling, RBAC, comprehensive logging
 
@@ -125,18 +127,20 @@ type GlobalConfig struct {
 ### Core Implementation ✅ COMPLETED
 - [x] Complete annotation system with global defaults ✅
 - [x] Periodic reconciliation with disk usage monitoring ✅
+- [x] Async processing with configurable parallelism (default: 4) ✅
 - [x] Cloud-agnostic PVC expansion via CSI ✅
 - [x] Comprehensive safety mechanisms ✅
 - [x] Production-ready monitoring and observability ✅
 - [x] Error handling and event recording ✅
 - [x] Structured JSON logging with ISO8601 timestamps ✅
 - [x] Dry run mode for testing without modifications ✅
+- [x] Comprehensive test coverage (unit, integration, E2E) ✅
 
 ### Next Milestones
 - [ ] Production deployment with Helm chart
 - [ ] Advanced policy management (PVCPolicy, PVCGroup)
-- [ ] Comprehensive test coverage
 - [ ] Complete documentation and examples
+- [ ] Performance optimization for large clusters
 
 ### Production Readiness Goals
 - [ ] Stable operation in production environments

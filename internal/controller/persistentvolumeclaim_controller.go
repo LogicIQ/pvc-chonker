@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/logicIQ/pvc-chonker/pkg/annotations"
@@ -27,14 +28,13 @@ type PersistentVolumeClaimReconciler struct {
 	WatchInterval    time.Duration
 	EventRecorder    record.EventRecorder
 	DryRun           bool
+	MaxParallel      int
 }
 
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;update;patch
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list
 //+kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
-
-// Start implements manager.Runnable for periodic reconciliation
 func (r *PersistentVolumeClaimReconciler) Start(ctx context.Context) error {
 	log := log.FromContext(ctx).WithName("pvcReconciler")
 	log.Info("Starting periodic reconciliation loop", "interval", r.WatchInterval, "dryRun", r.DryRun)
@@ -42,7 +42,7 @@ func (r *PersistentVolumeClaimReconciler) Start(ctx context.Context) error {
 	ticker := time.NewTicker(r.WatchInterval)
 	defer ticker.Stop()
 
-	// Initial run
+
 	r.reconcileAll(ctx)
 
 	for {
@@ -60,7 +60,7 @@ func (r *PersistentVolumeClaimReconciler) NeedLeaderElection() bool {
 	return true
 }
 
-// reconcileAll processes all managed PVCs for usage monitoring
+
 func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	log := log.FromContext(ctx).WithName("reconcileAll")
 	startTime := time.Now()
@@ -80,16 +80,31 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 		return
 	}
 
-	for _, pvc := range pvcs.Items {
-		r.reconcilePVC(ctx, &pvc)
+	if r.MaxParallel <= 0 {
+		r.MaxParallel = 4
 	}
+
+	semaphore := make(chan struct{}, r.MaxParallel)
+	var wg sync.WaitGroup
+
+	for _, pvc := range pvcs.Items {
+		wg.Add(1)
+		go func(pvc corev1.PersistentVolumeClaim) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+			r.reconcilePVC(ctx, &pvc)
+		}(pvc)
+	}
+
+	wg.Wait()
 
 	metrics.ReconciliationStatus.WithLabelValues("success").Set(1)
 	metrics.ReconciliationStatus.WithLabelValues("failure").Set(0)
 	log.V(1).Info("Completed reconciliation cycle", "pvcCount", len(pvcs.Items), "duration", time.Since(startTime))
 }
 
-// reconcilePVC processes a single PVC for expansion
+
 func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim) {
 	log := log.FromContext(ctx).WithValues("pvc", pvc.Name, "namespace", pvc.Namespace)
 
@@ -197,13 +212,13 @@ func (r *PersistentVolumeClaimReconciler) expandPVC(ctx context.Context, pvc *co
 		return nil
 	}
 
-	// Create a copy to avoid modifying the original
+
 	pvcCopy := pvc.DeepCopy()
 	pvcCopy.Spec.Resources.Requests[corev1.ResourceStorage] = newSize
 	annotations.UpdateLastExpansion(pvcCopy)
 
 	if err := r.Update(ctx, pvcCopy); err != nil {
-		// Enhanced error handling with specific error types
+
 		if client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("failed to update PVC spec: %w", err)
 		}
@@ -214,6 +229,6 @@ func (r *PersistentVolumeClaimReconciler) expandPVC(ctx context.Context, pvc *co
 }
 
 func (r *PersistentVolumeClaimReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// No need to watch PVC events since we use periodic reconciliation
+	
 	return nil
 }
