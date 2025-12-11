@@ -1,0 +1,88 @@
+version: '3'
+
+vars:
+  IMG: logiciq/pvc-chonker:latest
+  CLUSTER_NAME: chonker-e2e
+
+tasks:
+  install-kind:
+    desc: Install kind if not present
+    status:
+      - which kind
+    cmds:
+      - curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+      - chmod +x ./kind
+      - sudo mv ./kind /usr/local/bin/kind
+
+  kind-create:
+    desc: Create kind cluster for testing
+    deps: [install-kind]
+    status:
+      - kind get clusters | grep -q {{.CLUSTER_NAME}}
+    cmds:
+      - mkdir -p /tmp/kind-storage
+      - kind create cluster --name {{.CLUSTER_NAME}} --config fixtures/kind-config.yaml
+
+  kind-delete:
+    desc: Delete kind cluster
+    cmds:
+      - kind delete cluster --name {{.CLUSTER_NAME}}
+
+  setup:
+    desc: Setup test environment in kind cluster
+    cmds:
+      - kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml
+      - kubectl apply -f fixtures/storage-class.yaml
+      - kubectl wait --for=condition=Ready pods -l app=local-path-provisioner -n local-path-storage --timeout=60s
+
+  deploy:
+    desc: Deploy operator to kind cluster
+    cmds:
+      - cd .. && task docker:build
+      - kind load docker-image {{.IMG}} --name {{.CLUSTER_NAME}}
+      - kubectl apply -R -f ../config/
+      - kubectl apply -f fixtures/test-pvc.yaml
+      - kubectl delete pod test-pod --ignore-not-found=true
+      - kubectl apply -f fixtures/test-pod.yaml
+
+  run:
+    desc: Run full E2E test
+    cmds:
+      - task: kind-create
+      - task: setup
+      - task: deploy
+      - task: test
+
+  test:
+    desc: Execute automated E2E tests
+    cmds:
+      - go mod tidy
+      - go test -v ./... -timeout=30m
+
+  status:
+    desc: Show comprehensive operator status and activity
+    cmds:
+      - echo "=== Operator Status ==="
+      - kubectl get pods -n pvc-chonker-system
+      - echo ""
+      - echo "=== PVC Status ==="
+      - kubectl get pvc test-pvc
+      - echo ""
+      - echo "=== Test Pod Status ==="
+      - kubectl get pod test-pod
+      - echo ""
+      - echo "=== Current Disk Usage ==="
+      - kubectl exec test-pod -- df -h /data 2>/dev/null || echo "Pod not ready"
+      - echo ""
+      - echo "=== Recent Operator Logs ==="
+      - kubectl logs deployment/pvc-chonker-controller-manager -n pvc-chonker-system --tail=20 --since=5m
+
+  cleanup:
+    desc: Clean up test environment
+    cmds:
+      - task: kind-delete
+
+  cleanup-all:
+    desc: Delete all kind clusters
+    cmds:
+      - kind get clusters | xargs -r -I {} kind delete cluster --name {}

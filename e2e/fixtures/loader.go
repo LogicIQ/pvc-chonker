@@ -4,12 +4,11 @@ import (
 	"context"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/yaml"
 )
 
 // LoadFixture loads a YAML fixture file and returns the decoded object
@@ -48,17 +47,18 @@ func LoadMultipleFixtures(filename string) ([]client.Object, error) {
 	}
 
 	// Split YAML documents
-	docs := yaml.SplitYAMLDocument(data)
+	docs := strings.Split(string(data), "---")
 	var objects []client.Object
 
 	decode := serializer.NewCodecFactory(scheme.Scheme).UniversalDeserializer().Decode
 
 	for _, doc := range docs {
+		doc = strings.TrimSpace(doc)
 		if len(doc) == 0 {
 			continue
 		}
 
-		obj, _, err := decode(doc, nil, nil)
+		obj, _, err := decode([]byte(doc), nil, nil)
 		if err != nil {
 			return nil, err
 		}

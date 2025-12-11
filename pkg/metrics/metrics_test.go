@@ -12,19 +12,17 @@ import (
 func TestMetricsRegistration(t *testing.T) {
 	// Test that all metrics are properly registered
 	registry := prometheus.NewRegistry()
-	
+
 	// Register all metrics including Go runtime metrics
 	registry.MustRegister(
-		ExpansionsTotal,
-		ExpansionFailuresTotal,
+		SuccessResizeTotal,
+		FailedResizeTotal,
 		ThresholdReachedTotal,
-		MaxSizeReachedTotal,
-		PvcUnhealthyTotal,
+		LimitReachedTotal,
 		ReconciliationStatus,
-		LoopDurationSeconds,
 		LastReconciliationTime,
-		LastUpsizeTime,
-		UpsizeStatus,
+		ManagedPVCsTotal,
+		PVCUsagePercent,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
@@ -42,38 +40,38 @@ func TestMetricsRegistration(t *testing.T) {
 	t.Logf("Registered %d metric families (including Go runtime metrics)", len(metricFamilies))
 }
 
-func TestExpansionsTotal(t *testing.T) {
+func TestSuccessResizeTotal(t *testing.T) {
 	// Reset metric
-	ExpansionsTotal.Reset()
+	SuccessResizeTotal.Reset()
 
 	// Test increment
-	ExpansionsTotal.WithLabelValues("test-pvc", "default").Inc()
-	ExpansionsTotal.WithLabelValues("test-pvc", "default").Inc()
-	ExpansionsTotal.WithLabelValues("other-pvc", "kube-system").Inc()
+	SuccessResizeTotal.WithLabelValues("test-pvc", "default").Inc()
+	SuccessResizeTotal.WithLabelValues("test-pvc", "default").Inc()
+	SuccessResizeTotal.WithLabelValues("other-pvc", "kube-system").Inc()
 
 	// Verify values
-	if testutil.ToFloat64(ExpansionsTotal.WithLabelValues("test-pvc", "default")) != 2 {
-		t.Error("Expected ExpansionsTotal for test-pvc to be 2")
+	if testutil.ToFloat64(SuccessResizeTotal.WithLabelValues("test-pvc", "default")) != 2 {
+		t.Error("Expected SuccessResizeTotal for test-pvc to be 2")
 	}
-	if testutil.ToFloat64(ExpansionsTotal.WithLabelValues("other-pvc", "kube-system")) != 1 {
-		t.Error("Expected ExpansionsTotal for other-pvc to be 1")
+	if testutil.ToFloat64(SuccessResizeTotal.WithLabelValues("other-pvc", "kube-system")) != 1 {
+		t.Error("Expected SuccessResizeTotal for other-pvc to be 1")
 	}
 }
 
-func TestExpansionFailuresTotal(t *testing.T) {
+func TestFailedResizeTotal(t *testing.T) {
 	// Reset metric
-	ExpansionFailuresTotal.Reset()
+	FailedResizeTotal.Reset()
 
 	// Test increment with different reasons
-	ExpansionFailuresTotal.WithLabelValues("test-pvc", "default", "max_size_exceeded").Inc()
-	ExpansionFailuresTotal.WithLabelValues("test-pvc", "default", "calculation_error").Inc()
+	FailedResizeTotal.WithLabelValues("test-pvc", "default", "max_size_exceeded").Inc()
+	FailedResizeTotal.WithLabelValues("test-pvc", "default", "calculation_error").Inc()
 
 	// Verify values
-	if testutil.ToFloat64(ExpansionFailuresTotal.WithLabelValues("test-pvc", "default", "max_size_exceeded")) != 1 {
-		t.Error("Expected ExpansionFailuresTotal for max_size_exceeded to be 1")
+	if testutil.ToFloat64(FailedResizeTotal.WithLabelValues("test-pvc", "default", "max_size_exceeded")) != 1 {
+		t.Error("Expected FailedResizeTotal for max_size_exceeded to be 1")
 	}
-	if testutil.ToFloat64(ExpansionFailuresTotal.WithLabelValues("test-pvc", "default", "calculation_error")) != 1 {
-		t.Error("Expected ExpansionFailuresTotal for calculation_error to be 1")
+	if testutil.ToFloat64(FailedResizeTotal.WithLabelValues("test-pvc", "default", "calculation_error")) != 1 {
+		t.Error("Expected FailedResizeTotal for calculation_error to be 1")
 	}
 }
 
@@ -94,35 +92,29 @@ func TestReconciliationStatus(t *testing.T) {
 	}
 }
 
-func TestLoopDurationSeconds(t *testing.T) {
-	// Test observation
-	LoopDurationSeconds.Observe(1.5)
-	LoopDurationSeconds.Observe(2.0)
-	LoopDurationSeconds.Observe(0.8)
+func TestLoopSecondsTotal(t *testing.T) {
+	// Test counter increment
+	LoopSecondsTotal.Add(1.5)
+	LoopSecondsTotal.Add(2.0)
+	LoopSecondsTotal.Add(0.8)
 
-	// Basic test that observations were recorded without error
-	t.Log("LoopDurationSeconds observations recorded successfully")
+	// Basic test that increments were recorded without error
+	t.Log("LoopSecondsTotal increments recorded successfully")
 }
 
-func TestUpsizeStatus(t *testing.T) {
+func TestManagedPVCsTotal(t *testing.T) {
 	// Reset metric
-	UpsizeStatus.Reset()
+	ManagedPVCsTotal.Set(0)
 
-	// Test setting different statuses
-	UpsizeStatus.WithLabelValues("test-pvc", "default", "success").Set(1)
-	UpsizeStatus.WithLabelValues("test-pvc", "default", "failure").Set(0)
-	UpsizeStatus.WithLabelValues("other-pvc", "kube-system", "success").Set(0)
-	UpsizeStatus.WithLabelValues("other-pvc", "kube-system", "failure").Set(1)
+	// Test setting different values
+	ManagedPVCsTotal.Set(5)
+	if testutil.ToFloat64(ManagedPVCsTotal) != 5 {
+		t.Error("Expected ManagedPVCsTotal to be 5")
+	}
 
-	// Verify values
-	if testutil.ToFloat64(UpsizeStatus.WithLabelValues("test-pvc", "default", "success")) != 1 {
-		t.Error("Expected UpsizeStatus success for test-pvc to be 1")
-	}
-	if testutil.ToFloat64(UpsizeStatus.WithLabelValues("test-pvc", "default", "failure")) != 0 {
-		t.Error("Expected UpsizeStatus failure for test-pvc to be 0")
-	}
-	if testutil.ToFloat64(UpsizeStatus.WithLabelValues("other-pvc", "kube-system", "failure")) != 1 {
-		t.Error("Expected UpsizeStatus failure for other-pvc to be 1")
+	ManagedPVCsTotal.Set(10)
+	if testutil.ToFloat64(ManagedPVCsTotal) != 10 {
+		t.Error("Expected ManagedPVCsTotal to be 10")
 	}
 }
 
@@ -134,19 +126,19 @@ func TestMetricLabels(t *testing.T) {
 		labels []string
 	}{
 		{
-			name:   "ExpansionsTotal",
-			metric: ExpansionsTotal,
+			name:   "SuccessResizeTotal",
+			metric: SuccessResizeTotal,
 			labels: []string{"pvc-name", "namespace"},
 		},
 		{
-			name:   "ExpansionFailuresTotal", 
-			metric: ExpansionFailuresTotal,
+			name:   "FailedResizeTotal",
+			metric: FailedResizeTotal,
 			labels: []string{"pvc-name", "namespace", "reason"},
 		},
 		{
-			name:   "UpsizeStatus",
-			metric: UpsizeStatus,
-			labels: []string{"pvc-name", "namespace", "status"},
+			name:   "PVCUsagePercent",
+			metric: PVCUsagePercent,
+			labels: []string{"pvc-name", "namespace"},
 		},
 	}
 

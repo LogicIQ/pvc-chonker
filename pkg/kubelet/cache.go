@@ -7,7 +7,9 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"time"
 
+	"github.com/logicIQ/pvc-chonker/pkg/metrics"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -23,6 +25,11 @@ func NewMetricsCache() *MetricsCache {
 }
 
 func (mc *MetricsCollector) GetAllVolumeMetrics(ctx context.Context) (*MetricsCache, error) {
+	startTime := time.Now()
+	defer func() {
+		metrics.KubeletClientResponseTime.Observe(time.Since(startTime).Seconds())
+	}()
+
 	metricsText, err := mc.fetchMetrics(ctx)
 	if err != nil {
 		return nil, err
@@ -55,9 +62,13 @@ func (mc *MetricsCollector) fetchMetrics(ctx context.Context) (string, error) {
 func (cache *MetricsCache) parseAllMetrics(metricsText string) {
 	capacityPattern := regexp.MustCompile(`kubelet_volume_stats_capacity_bytes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
 	availablePattern := regexp.MustCompile(`kubelet_volume_stats_available_bytes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
+	inodesPattern := regexp.MustCompile(`kubelet_volume_stats_inodes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
+	inodesUsedPattern := regexp.MustCompile(`kubelet_volume_stats_inodes_used\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
 
 	capacityMatches := capacityPattern.FindAllStringSubmatch(metricsText, -1)
 	availableMatches := availablePattern.FindAllStringSubmatch(metricsText, -1)
+	inodesMatches := inodesPattern.FindAllStringSubmatch(metricsText, -1)
+	inodesUsedMatches := inodesUsedPattern.FindAllStringSubmatch(metricsText, -1)
 
 	capacityMap := make(map[string]int64)
 	for _, match := range capacityMatches {
@@ -79,19 +90,53 @@ func (cache *MetricsCache) parseAllMetrics(metricsText string) {
 		}
 	}
 
+	inodesMap := make(map[string]int64)
+	for _, match := range inodesMatches {
+		if len(match) >= 4 {
+			key := match[1] + "/" + match[2]
+			if val, err := strconv.ParseInt(match[3], 10, 64); err == nil {
+				inodesMap[key] = val
+			}
+		}
+	}
+
+	inodesUsedMap := make(map[string]int64)
+	for _, match := range inodesUsedMatches {
+		if len(match) >= 4 {
+			key := match[1] + "/" + match[2]
+			if val, err := strconv.ParseInt(match[3], 10, 64); err == nil {
+				inodesUsedMap[key] = val
+			}
+		}
+	}
+
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
-	
+
 	for key, capacity := range capacityMap {
 		if available, exists := availableMap[key]; exists && capacity > 0 {
 			used := capacity - available
 			usagePercent := float64(used) / float64(capacity) * 100
-			
+
+			// Parse inode metrics if available
+			var inodesTotal, inodesUsed, inodesFree int64
+			var inodesUsagePercent float64
+			if inodesTotal, exists = inodesMap[key]; exists {
+				if inodesUsed, exists = inodesUsedMap[key]; exists && inodesTotal > 0 {
+					inodesFree = inodesTotal - inodesUsed
+					inodesUsagePercent = float64(inodesUsed) / float64(inodesTotal) * 100
+				}
+			}
+
 			cache.data[key] = &VolumeMetrics{
-				CapacityBytes:  capacity,
-				AvailableBytes: available,
-				UsedBytes:      used,
-				UsagePercent:   usagePercent,
+				CapacityBytes:      capacity,
+				AvailableBytes:     available,
+				UsedBytes:          used,
+				UsagePercent:       usagePercent,
+				InodesTotal:        inodesTotal,
+				InodesUsed:         inodesUsed,
+				InodesFree:         inodesFree,
+				InodesUsagePercent: inodesUsagePercent,
 			}
 		}
 	}

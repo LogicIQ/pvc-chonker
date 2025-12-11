@@ -18,6 +18,7 @@
 ```yaml
 pvc-chonker.io/enabled: "true"                    # Enable auto-expansion
 pvc-chonker.io/threshold: "80%"                   # Storage threshold
+pvc-chonker.io/inodes-threshold: "80%"            # Inode threshold
 pvc-chonker.io/increase: "10%"                    # Expansion amount
 pvc-chonker.io/max-size: "1000Gi"                 # Maximum size limit
 pvc-chonker.io/min-scale-up: "1Gi"                # Minimum expansion amount
@@ -130,6 +131,7 @@ type GlobalConfig struct {
 - **Dry Run Mode**: Test expansion logic without making actual PVC modifications
 - **Comprehensive Testing**: Unit, integration, and E2E test suites with full coverage
 - **Cloud Agnostic**: Works with any CSI-compatible storage
+- **Inode Support**: Automatic monitoring of both storage and inode usage with separate configurable thresholds ✅
 - **Production Ready**: Error handling, RBAC, comprehensive logging, optimized performance
 
 ## Success Metrics
@@ -174,6 +176,7 @@ type GlobalConfig struct {
 ## Future Enhancements (Post v1.0)
 
 ### Advanced Features
+- [x] **Inode Monitoring**: Support for inode threshold monitoring (filesystem-dependent) ✅
 - [ ] **Multi-Cluster**: Cross-cluster PVC management
 - [ ] **Cost Optimization**: Volume type recommendations based on usage patterns
 - [ ] **Backup Integration**: Coordinate with backup solutions

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/logicIQ/pvc-chonker/pkg/annotations"
+	"github.com/logicIQ/pvc-chonker/pkg/cache"
 
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -28,9 +29,9 @@ func TestIsPVCEligible(t *testing.T) {
 			name: "eligible PVC",
 			pvc: &corev1.PersistentVolumeClaim{
 				Spec: corev1.PersistentVolumeClaimSpec{
-					VolumeMode: func() *corev1.PersistentVolumeMode { 
+					VolumeMode: func() *corev1.PersistentVolumeMode {
 						mode := corev1.PersistentVolumeFilesystem
-						return &mode 
+						return &mode
 					}(),
 				},
 				Status: corev1.PersistentVolumeClaimStatus{
@@ -43,9 +44,9 @@ func TestIsPVCEligible(t *testing.T) {
 			name: "block volume mode",
 			pvc: &corev1.PersistentVolumeClaim{
 				Spec: corev1.PersistentVolumeClaimSpec{
-					VolumeMode: func() *corev1.PersistentVolumeMode { 
+					VolumeMode: func() *corev1.PersistentVolumeMode {
 						mode := corev1.PersistentVolumeBlock
-						return &mode 
+						return &mode
 					}(),
 				},
 				Status: corev1.PersistentVolumeClaimStatus{
@@ -79,7 +80,7 @@ func TestIsPVCEligible(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := reconciler.isPVCEligible(tt.pvc)
+			result := reconciler.IsPVCEligible(tt.pvc)
 			if result != tt.expected {
 				t.Errorf("isPVCEligible() = %v, want %v", result, tt.expected)
 			}
@@ -105,7 +106,7 @@ func TestIsStorageClassExpandable(t *testing.T) {
 				},
 			},
 			storageClass: &storagev1.StorageClass{
-				ObjectMeta: metav1.ObjectMeta{Name: "expandable-sc"},
+				ObjectMeta:           metav1.ObjectMeta{Name: "expandable-sc"},
 				AllowVolumeExpansion: func() *bool { b := true; return &b }(),
 			},
 			expected: true,
@@ -118,7 +119,7 @@ func TestIsStorageClassExpandable(t *testing.T) {
 				},
 			},
 			storageClass: &storagev1.StorageClass{
-				ObjectMeta: metav1.ObjectMeta{Name: "non-expandable-sc"},
+				ObjectMeta:           metav1.ObjectMeta{Name: "non-expandable-sc"},
 				AllowVolumeExpansion: func() *bool { b := false; return &b }(),
 			},
 			expected: false,
@@ -147,11 +148,12 @@ func TestIsStorageClassExpandable(t *testing.T) {
 				Build()
 
 			reconciler := &PersistentVolumeClaimReconciler{
-				Client: fakeClient,
+				Client:       fakeClient,
+				storageCache: cache.NewStorageClassCache(),
 			}
 
 			ctx := context.Background()
-			result := reconciler.isStorageClassExpandable(ctx, tt.pvc)
+			result := reconciler.IsStorageClassExpandable(ctx, tt.pvc)
 			if result != tt.expected {
 				t.Errorf("isStorageClassExpandable() = %v, want %v", result, tt.expected)
 			}
@@ -164,11 +166,11 @@ func TestExpandPVC(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	tests := []struct {
-		name      string
-		pvc       *corev1.PersistentVolumeClaim
-		config    *annotations.PVCConfig
-		dryRun    bool
-		wantErr   bool
+		name         string
+		pvc          *corev1.PersistentVolumeClaim
+		config       *annotations.PVCConfig
+		dryRun       bool
+		wantErr      bool
 		expectUpdate bool
 	}{
 		{
@@ -252,7 +254,7 @@ func TestExpandPVC(t *testing.T) {
 			}
 
 			ctx := context.Background()
-			err := reconciler.expandPVC(ctx, tt.pvc, tt.config)
+			err := reconciler.ExpandPVC(ctx, tt.pvc, tt.config)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("expandPVC() error = %v, wantErr %v", err, tt.wantErr)
@@ -273,15 +275,13 @@ func TestExpandPVC(t *testing.T) {
 				originalSize := tt.pvc.Status.Capacity[corev1.ResourceStorage]
 				newSize := updatedPVC.Spec.Resources.Requests[corev1.ResourceStorage]
 				if newSize.Cmp(originalSize) <= 0 {
-					t.Errorf("PVC size was not increased: original=%s, new=%s", 
+					t.Errorf("PVC size was not increased: original=%s, new=%s",
 						originalSize.String(), newSize.String())
 				}
 			}
 		})
 	}
 }
-
-
 
 // TestReconcilePVC is simplified to test the core logic without complex mocking
 // Full integration tests would be better suited for testing the complete reconciliation flow

@@ -11,36 +11,40 @@ import (
 )
 
 const (
-	AnnotationEnabled       = "pvc-chonker.io/enabled"
-	AnnotationThreshold     = "pvc-chonker.io/threshold"
-	AnnotationIncrease      = "pvc-chonker.io/increase"
-	AnnotationMaxSize       = "pvc-chonker.io/max-size"
-	AnnotationCooldown      = "pvc-chonker.io/cooldown"
-	AnnotationMinScaleUp    = "pvc-chonker.io/min-scale-up"
-	AnnotationLastExpansion = "pvc-chonker.io/last-expansion"
+	AnnotationEnabled         = "pvc-chonker.io/enabled"
+	AnnotationThreshold       = "pvc-chonker.io/threshold"
+	AnnotationInodesThreshold = "pvc-chonker.io/inodes-threshold"
+	AnnotationIncrease        = "pvc-chonker.io/increase"
+	AnnotationMaxSize         = "pvc-chonker.io/max-size"
+	AnnotationCooldown        = "pvc-chonker.io/cooldown"
+	AnnotationMinScaleUp      = "pvc-chonker.io/min-scale-up"
+	AnnotationLastExpansion   = "pvc-chonker.io/last-expansion"
 
-	DefaultThreshold  = 80.0
-	DefaultIncrease   = "10%"
-	DefaultCooldown   = 15 * time.Minute
-	DefaultMinScaleUp = 1 * 1024 * 1024 * 1024
+	DefaultThreshold       = 80.0
+	DefaultInodesThreshold = 80.0
+	DefaultIncrease        = "10%"
+	DefaultCooldown        = 15 * time.Minute
+	DefaultMinScaleUp      = 1 * 1024 * 1024 * 1024
 )
 
 type GlobalConfig struct {
-	Threshold  float64
-	Increase   string
-	Cooldown   time.Duration
-	MinScaleUp resource.Quantity
-	MaxSize    resource.Quantity
+	Threshold       float64
+	InodesThreshold float64
+	Increase        string
+	Cooldown        time.Duration
+	MinScaleUp      resource.Quantity
+	MaxSize         resource.Quantity
 }
 
 type PVCConfig struct {
-	Enabled       bool
-	Threshold     float64
-	Increase      string
-	MaxSize       resource.Quantity
-	Cooldown      time.Duration
-	MinScaleUp    resource.Quantity
-	LastExpansion *time.Time
+	Enabled         bool
+	Threshold       float64
+	InodesThreshold float64
+	Increase        string
+	MaxSize         resource.Quantity
+	Cooldown        time.Duration
+	MinScaleUp      resource.Quantity
+	LastExpansion   *time.Time
 }
 
 func ParsePVCAnnotations(pvc *corev1.PersistentVolumeClaim, global *GlobalConfig) (*PVCConfig, error) {
@@ -67,6 +71,16 @@ func ParsePVCAnnotations(pvc *corev1.PersistentVolumeClaim, global *GlobalConfig
 		config.Threshold = t
 	} else {
 		config.Threshold = global.Threshold
+	}
+
+	if inodesThreshold, exists := pvc.Annotations[AnnotationInodesThreshold]; exists {
+		t, err := parsePercentage(inodesThreshold)
+		if err != nil {
+			return nil, fmt.Errorf("invalid inodes-threshold: %w", err)
+		}
+		config.InodesThreshold = t
+	} else {
+		config.InodesThreshold = global.InodesThreshold
 	}
 
 	if increase, exists := pvc.Annotations[AnnotationIncrease]; exists {
@@ -118,7 +132,7 @@ func ParsePVCAnnotations(pvc *corev1.PersistentVolumeClaim, global *GlobalConfig
 
 func (c *PVCConfig) CalculateNewSize(currentSize resource.Quantity) (resource.Quantity, error) {
 	increase := strings.TrimSpace(c.Increase)
-	
+
 	var increaseBytes int64
 	if strings.HasSuffix(increase, "%") {
 		percentStr := strings.TrimSuffix(increase, "%")
@@ -135,18 +149,18 @@ func (c *PVCConfig) CalculateNewSize(currentSize resource.Quantity) (resource.Qu
 		}
 		increaseBytes = increaseSize.Value()
 	}
-	
+
 	minScaleUpBytes := c.MinScaleUp.Value()
 	if increaseBytes < minScaleUpBytes {
 		increaseBytes = minScaleUpBytes
 	}
-	
+
 	currentBytes := currentSize.Value()
 	newBytes := currentBytes + increaseBytes
-	
+
 	gibBoundary := int64(1024 * 1024 * 1024)
 	roundedBytes := ((newBytes + gibBoundary - 1) / gibBoundary) * gibBoundary
-	
+
 	newSize := resource.NewQuantity(roundedBytes, resource.BinarySI)
 	return *newSize, nil
 }
@@ -181,17 +195,17 @@ func parsePercentage(s string) (float64, error) {
 	if !strings.HasSuffix(s, "%") {
 		return 0, fmt.Errorf("percentage must end with %%")
 	}
-	
+
 	percentStr := strings.TrimSuffix(s, "%")
 	percent, err := strconv.ParseFloat(percentStr, 64)
 	if err != nil {
 		return 0, err
 	}
-	
+
 	if percent < 0 || percent > 100 {
 		return 0, fmt.Errorf("percentage must be between 0 and 100")
 	}
-	
+
 	return percent, nil
 }
 
@@ -208,12 +222,13 @@ func NewGlobalConfig(threshold float64, increase string, cooldown time.Duration,
 	if minScaleUp.IsZero() {
 		minScaleUp = *resource.NewQuantity(DefaultMinScaleUp, resource.BinarySI)
 	}
-	
+
 	return &GlobalConfig{
-		Threshold:  threshold,
-		Increase:   increase,
-		Cooldown:   cooldown,
-		MinScaleUp: minScaleUp,
-		MaxSize:    maxSize,
+		Threshold:       threshold,
+		InodesThreshold: DefaultInodesThreshold,
+		Increase:        increase,
+		Cooldown:        cooldown,
+		MinScaleUp:      minScaleUp,
+		MaxSize:         maxSize,
 	}
 }

@@ -1,4 +1,4 @@
-package integration
+package e2e
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
@@ -57,7 +57,7 @@ var _ = Describe("Controller Integration", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Test eligibility
-			eligible := reconciler.isPVCEligible(pvc)
+			eligible := reconciler.IsPVCEligible(pvc)
 			Expect(eligible).To(BeTrue())
 
 			// Cleanup
@@ -77,7 +77,7 @@ var _ = Describe("Controller Integration", func() {
 			err := k8sClient.Create(ctx, pvc)
 			Expect(err).NotTo(HaveOccurred())
 
-			eligible := reconciler.isPVCEligible(pvc)
+			eligible := reconciler.IsPVCEligible(pvc)
 			Expect(eligible).To(BeFalse())
 
 			// Cleanup
@@ -96,7 +96,7 @@ var _ = Describe("Controller Integration", func() {
 			err := k8sClient.Create(ctx, pvc)
 			Expect(err).NotTo(HaveOccurred())
 
-			eligible := reconciler.isPVCEligible(pvc)
+			eligible := reconciler.IsPVCEligible(pvc)
 			Expect(eligible).To(BeFalse())
 
 			// Cleanup
@@ -116,7 +116,7 @@ var _ = Describe("Controller Integration", func() {
 			err := k8sClient.Create(ctx, pvc)
 			Expect(err).NotTo(HaveOccurred())
 
-			expandable := reconciler.isStorageClassExpandable(ctx, pvc)
+			expandable := reconciler.IsStorageClassExpandable(ctx, pvc)
 			Expect(expandable).To(BeTrue())
 
 			// Cleanup
@@ -134,7 +134,7 @@ var _ = Describe("Controller Integration", func() {
 			err := k8sClient.Create(ctx, pvc)
 			Expect(err).NotTo(HaveOccurred())
 
-			expandable := reconciler.isStorageClassExpandable(ctx, pvc)
+			expandable := reconciler.IsStorageClassExpandable(ctx, pvc)
 			Expect(expandable).To(BeFalse())
 
 			// Cleanup
@@ -169,7 +169,7 @@ var _ = Describe("Controller Integration", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Test expansion
-			err = reconciler.expandPVC(ctx, pvc, config)
+			err = reconciler.ExpandPVC(ctx, pvc, config)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify PVC was updated
@@ -207,7 +207,7 @@ var _ = Describe("Controller Integration", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Should fail due to max size limit
-			err = reconciler.expandPVC(ctx, pvc, config)
+			err = reconciler.ExpandPVC(ctx, pvc, config)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("exceeds max size"))
 
@@ -234,7 +234,7 @@ var _ = Describe("Controller Integration", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Should succeed without error in dry run
-			err = reconciler.expandPVC(ctx, pvc, config)
+			err = reconciler.ExpandPVC(ctx, pvc, config)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify PVC was NOT actually updated
@@ -305,7 +305,19 @@ func (m *MockMetricsCollector) GetVolumeMetrics(ctx context.Context, namespacedN
 	if metrics, exists := m.metrics[key]; exists {
 		return metrics, nil
 	}
-	return nil, kubelet.ErrVolumeNotFound
+	return nil, ErrVolumeNotFound
+}
+
+func (m *MockMetricsCollector) GetAllVolumeMetrics(ctx context.Context) (*kubelet.MetricsCache, error) {
+	cache := kubelet.NewMetricsCache()
+	// Populate cache with mock data
+	for key, metrics := range m.metrics {
+		// This is a simplified mock - in real implementation we'd need to access private fields
+		// For now, return empty cache
+		_ = key
+		_ = metrics
+	}
+	return cache, nil
 }
 
 // Add the missing error

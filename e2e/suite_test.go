@@ -1,10 +1,8 @@
-package integration
+package e2e
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -15,15 +13,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	ctrl "sigs.k8s.io/controller-runtime"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/logicIQ/pvc-chonker/internal/controller"
-	"github.com/logicIQ/pvc-chonker/pkg/annotations"
-	"github.com/logicIQ/pvc-chonker/test/integration/fixtures"
+
+	"github.com/logicIQ/pvc-chonker/e2e/fixtures"
 )
 
 var cfg *rest.Config

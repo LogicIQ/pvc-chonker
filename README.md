@@ -66,7 +66,18 @@ task deploy
 
 ## Development
 
-See [ROADMAP.md](ROADMAP.md) for detailed project roadmap and development phases.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for detailed project roadmap and development phases.
+
+## Monitoring
+
+PVC Chonker exports comprehensive Prometheus metrics for monitoring and alerting. See [docs/METRICS.md](docs/METRICS.md) for detailed metrics documentation including:
+
+- Resizer success/failure counters
+- Client performance metrics
+- Operational status indicators
+- PVC usage and capacity tracking
+
+Metrics are available at `:8080/metrics` by default.
 
 ## Usage
 
@@ -80,6 +91,7 @@ metadata:
   annotations:
     pvc-chonker.io/enabled: "true"
     pvc-chonker.io/threshold: "80%"
+    pvc-chonker.io/inodes-threshold: "80%"
     pvc-chonker.io/increase: "10%"
     pvc-chonker.io/max-size: "100Gi"
     pvc-chonker.io/min-scale-up: "1Gi"
@@ -98,6 +110,7 @@ spec:
 |------------|-------------|---------|----------|
 | `pvc-chonker.io/enabled` | Enable auto-expansion | `false` | `"true"` |
 | `pvc-chonker.io/threshold` | Storage usage threshold | `80%` | `"85%"` |
+| `pvc-chonker.io/inodes-threshold` | Inode usage threshold | `80%` | `"90%"` |
 | `pvc-chonker.io/increase` | Expansion amount | `10%` | `"20%"` or `"5Gi"` |
 | `pvc-chonker.io/max-size` | Maximum size limit | none | `"1000Gi"` |
 | `pvc-chonker.io/min-scale-up` | Minimum expansion amount | `1Gi` | `"2Gi"` or `"500Mi"` |
@@ -118,6 +131,40 @@ Each setting follows this precedence order:
 - **Minimum Expansion**: Ensures meaningful size increases (min 1Gi)
 - **GiB Rounding**: Rounds up to clean storage boundaries
 
+## Inode Support
+
+✅ **Automatic Inode Monitoring**: PVC Chonker monitors both storage and inode usage:
+
+- Triggers expansion when either storage OR inode threshold is reached
+- Works with any filesystem that exposes inode metrics via kubelet
+- Provides detailed inode usage in logs and Prometheus metrics
+- Gracefully handles volumes without inode metrics (storage-only mode)
+
+⚠️ **Filesystem Considerations**: Inode expansion effectiveness varies by filesystem:
+
+- **ext3/ext4**: Fixed inode count at creation - expansion won't increase inodes
+- **XFS**: Dynamic inodes - expansion resolves both storage and inode pressure
+- **Btrfs/ZFS**: Dynamic inodes - fully effective for inode pressure
+
+**Important**: PVC Chonker will detect ext3/ext4 filesystems and warn when inode pressure triggers expansion, as the expansion will not resolve the inode issue.
+
+## Monitoring & Alerting
+
+**Essential Monitoring**: Set up alerts for inode usage, especially on ext3/ext4 filesystems:
+
+```promql
+# Alert on high inode usage for ext3/ext4 (expansion won't help)
+pvcchonker_pvc_inodes_usage_percent > 85
+
+# Alert on inode pressure expansions that won't resolve the issue
+increase(pvcchonker_resizer_failed_resize_total{reason="inode_pressure_fixed_fs"}[5m]) > 0
+```
+
+**Recommended Actions**:
+- Monitor both storage and inode usage in your alerting system
+- For ext3/ext4 with high file counts, plan filesystem migration or recreation with higher inode density
+- Use XFS for workloads with many small files
+
 ## Examples
 
 See the [`examples/`](examples/) directory for sample PVC configurations:
@@ -134,6 +181,7 @@ metadata:
   annotations:
     pvc-chonker.io/enabled: "true"
     pvc-chonker.io/threshold: "85%"
+    pvc-chonker.io/inodes-threshold: "90%"
     pvc-chonker.io/increase: "25%"
     pvc-chonker.io/max-size: "500Gi"
     pvc-chonker.io/min-scale-up: "2Gi"

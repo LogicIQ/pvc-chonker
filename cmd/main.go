@@ -9,21 +9,20 @@ import (
 	"github.com/logicIQ/pvc-chonker/pkg/annotations"
 	"github.com/logicIQ/pvc-chonker/pkg/kubelet"
 
+	"context"
+	"fmt"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"context"
-	"fmt"
-	"net/http"
-	"strings"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	"golang.org/x/time/rate"
+	"strings"
 )
 
 var (
@@ -51,7 +50,6 @@ func main() {
 	var logLevel string
 	var concurrency int
 
-
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "Metrics endpoint address")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "Health probe endpoint address")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false, "Enable leader election")
@@ -69,10 +67,6 @@ func main() {
 
 	opts := zap.Options{
 		Development: logFormat == "console",
-		TimeEncoder: "iso8601",
-	}
-	if logFormat == "console" {
-		opts.TimeEncoder = "rfc3339"
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()

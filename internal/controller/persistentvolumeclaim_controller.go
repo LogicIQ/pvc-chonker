@@ -15,17 +15,17 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"k8s.io/client-go/tools/record"
 )
 
 type PersistentVolumeClaimReconciler struct {
 	client.Client
 	Scheme           *runtime.Scheme
 	GlobalConfig     *annotations.GlobalConfig
-	MetricsCollector *kubelet.MetricsCollector
+	MetricsCollector kubelet.MetricsCollectorInterface
 	WatchInterval    time.Duration
 	EventRecorder    record.EventRecorder
 	DryRun           bool
@@ -34,10 +34,10 @@ type PersistentVolumeClaimReconciler struct {
 	storageCache     *cache.StorageClassCache
 }
 
-//+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;update;patch
-//+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list
-//+kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;update;patch
+// +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 func (r *PersistentVolumeClaimReconciler) Start(ctx context.Context) error {
 	log := log.FromContext(ctx).WithName("pvcReconciler")
 	log.Info("Starting periodic reconciliation loop", "interval", r.WatchInterval, "dryRun", r.DryRun)
@@ -65,13 +65,10 @@ func (r *PersistentVolumeClaimReconciler) NeedLeaderElection() bool {
 	return true
 }
 
-
 func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	log := log.FromContext(ctx).WithName("reconcileAll")
 	startTime := time.Now()
 	defer func() {
-		duration := time.Since(startTime).Seconds()
-		metrics.LoopDurationSeconds.Observe(duration)
 		metrics.LastReconciliationTime.SetToCurrentTime()
 	}()
 
@@ -81,15 +78,14 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	r.storageCache.Clear()
 
 	var pvcs corev1.PersistentVolumeClaimList
-	listOpts := &client.ListOptions{
-		LabelSelector: client.MatchingLabels{},
-	}
-	if err := r.Client.List(ctx, &pvcs, listOpts); err != nil {
+	if err := r.Client.List(ctx, &pvcs); err != nil {
 		log.Error(err, "Failed to list PVCs")
+		metrics.RecordKubernetesClientRequest("list_pvcs", "failed")
 		metrics.ReconciliationStatus.WithLabelValues("failure").Set(1)
 		metrics.ReconciliationStatus.WithLabelValues("success").Set(0)
 		return
 	}
+	metrics.RecordKubernetesClientRequest("list_pvcs", "success")
 
 	// Filter to only managed PVCs
 	managedPVCs := make([]corev1.PersistentVolumeClaim, 0, len(pvcs.Items))
@@ -104,11 +100,16 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	metricsCache, err := r.MetricsCollector.GetAllVolumeMetrics(ctx)
 	if err != nil {
 		log.Error(err, "Failed to fetch kubelet metrics")
+		metrics.RecordKubeletClientRequest("failed")
 		metrics.ReconciliationStatus.WithLabelValues("failure").Set(1)
 		metrics.ReconciliationStatus.WithLabelValues("success").Set(0)
 		return
 	}
+	metrics.RecordKubeletClientRequest("success")
 	r.metricsCache = metricsCache
+
+	// Update managed PVCs count
+	metrics.ManagedPVCsTotal.Set(float64(len(managedPVCs)))
 
 	if r.MaxParallel <= 0 {
 		r.MaxParallel = 4
@@ -129,11 +130,11 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 
 	wg.Wait()
 
+	metrics.RecordLoopDuration(time.Since(startTime).Seconds())
 	metrics.ReconciliationStatus.WithLabelValues("success").Set(1)
 	metrics.ReconciliationStatus.WithLabelValues("failure").Set(0)
 	log.V(1).Info("Completed reconciliation cycle", "pvcCount", len(pvcs.Items), "duration", time.Since(startTime))
 }
-
 
 func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim) {
 	log := log.FromContext(ctx).WithValues("pvc", pvc.Name, "namespace", pvc.Namespace)
@@ -144,24 +145,26 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 		return
 	}
 
-	if !r.isPVCEligible(pvc) {
+	if !r.IsPVCEligible(pvc) {
 		log.V(2).Info("PVC not eligible for expansion")
 		return
 	}
 
-	if !r.isStorageClassExpandable(ctx, pvc) {
+	if !r.IsStorageClassExpandable(ctx, pvc) {
 		log.V(2).Info("Storage class does not allow volume expansion")
-		metrics.PvcUnhealthyTotal.WithLabelValues(pvc.Name, pvc.Namespace).Inc()
+		metrics.RecordFailedResize(pvc.Name, pvc.Namespace, "storage_class_not_expandable")
 		return
 	}
 
 	if annotations.IsPvcResizing(pvc) {
 		log.V(1).Info("PVC is currently resizing, skipping")
+		metrics.RecordResizeInProgress(pvc.Name, pvc.Namespace)
 		return
 	}
 
 	if config.IsInCooldown() {
 		log.V(2).Info("PVC is in cooldown period")
+		metrics.RecordCooldownSkipped(pvc.Name, pvc.Namespace)
 		return
 	}
 
@@ -169,40 +172,81 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	volumeMetrics, exists := r.metricsCache.Get(namespacedName)
 	if !exists {
 		log.V(2).Info("Volume metrics not found in cache")
-		metrics.PvcUnhealthyTotal.WithLabelValues(pvc.Name, pvc.Namespace).Inc()
+		metrics.RecordFailedResize(pvc.Name, pvc.Namespace, "metrics_not_found")
 		return
 	}
 
-	if volumeMetrics.UsagePercent < config.Threshold {
-		log.V(3).Info("Threshold not reached", "usage", volumeMetrics.UsagePercent, "threshold", config.Threshold)
+	currentSize := pvc.Status.Capacity[corev1.ResourceStorage]
+	metrics.UpdatePVCMetrics(pvc.Name, pvc.Namespace, volumeMetrics.UsagePercent, currentSize.Value())
+	metrics.UpdatePVCInodesMetrics(pvc.Name, pvc.Namespace, volumeMetrics.InodesUsagePercent, volumeMetrics.InodesTotal)
+
+	thresholdReached := volumeMetrics.UsagePercent >= config.Threshold
+	if volumeMetrics.InodesTotal > 0 {
+		thresholdReached = thresholdReached || volumeMetrics.InodesUsagePercent >= config.InodesThreshold
+		if volumeMetrics.InodesUsagePercent >= config.InodesThreshold {
+			fsType := r.getFilesystemType(ctx, pvc)
+			if fsType == "ext3" || fsType == "ext4" {
+				log.Info("Inode threshold reached on fixed-inode filesystem - expansion will not resolve inode pressure",
+					"filesystem", fsType,
+					"inodesUsage", volumeMetrics.InodesUsagePercent,
+					"inodesThreshold", config.InodesThreshold)
+			} else {
+				log.Info("Inode threshold reached",
+					"filesystem", fsType,
+					"inodesUsage", volumeMetrics.InodesUsagePercent,
+					"inodesThreshold", config.InodesThreshold)
+			}
+		}
+	}
+
+	if !thresholdReached {
+		log.V(3).Info("Threshold not reached", "storageUsage", volumeMetrics.UsagePercent, "inodesUsage", volumeMetrics.InodesUsagePercent, "storageThreshold", config.Threshold, "inodesThreshold", config.InodesThreshold)
 		return
 	}
 
-	metrics.ThresholdReachedTotal.WithLabelValues(pvc.Name, pvc.Namespace).Inc()
-	log.Info("Threshold reached - initiating expansion", "usage", volumeMetrics.UsagePercent, "threshold", config.Threshold, "dryRun", r.DryRun)
+	metrics.RecordThresholdReached(pvc.Name, pvc.Namespace)
+	log.Info("Threshold reached - initiating expansion",
+		"storageUsage", volumeMetrics.UsagePercent,
+		"inodesUsage", volumeMetrics.InodesUsagePercent,
+		"storageThreshold", config.Threshold,
+		"inodesThreshold", config.InodesThreshold,
+		"dryRun", r.DryRun)
 
-	if err := r.expandPVC(ctx, pvc, config); err != nil {
-		metrics.ExpansionFailuresTotal.WithLabelValues(pvc.Name, pvc.Namespace, "expansion_failed").Inc()
-		metrics.LastUpsizeTime.WithLabelValues(pvc.Name, pvc.Namespace).SetToCurrentTime()
-		metrics.UpsizeStatus.WithLabelValues(pvc.Name, pvc.Namespace, "failure").Set(1)
-		metrics.UpsizeStatus.WithLabelValues(pvc.Name, pvc.Namespace, "success").Set(0)
+	if err := r.ExpandPVC(ctx, pvc, config); err != nil {
+		metrics.RecordFailedResize(pvc.Name, pvc.Namespace, "expansion_failed")
 		r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, "ExpansionFailed", "Failed to expand PVC: %v", err)
 		log.Error(err, "PVC expansion failed")
 		return
 	}
 
-	metrics.ExpansionsTotal.WithLabelValues(pvc.Name, pvc.Namespace).Inc()
-	metrics.LastUpsizeTime.WithLabelValues(pvc.Name, pvc.Namespace).SetToCurrentTime()
-	metrics.UpsizeStatus.WithLabelValues(pvc.Name, pvc.Namespace, "success").Set(1)
-	metrics.UpsizeStatus.WithLabelValues(pvc.Name, pvc.Namespace, "failure").Set(0)
-	currentSize := pvc.Status.Capacity[corev1.ResourceStorage]
+	metrics.RecordSuccessfulResize(pvc.Name, pvc.Namespace)
 	newSize := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
-	r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, "Expanded", "PVC expanded from %s to %s (usage: %.1f%%)", 
-		currentSize.String(), newSize.String(), volumeMetrics.UsagePercent)
+	if volumeMetrics.InodesTotal > 0 {
+		if volumeMetrics.InodesUsagePercent >= config.InodesThreshold {
+			fsType := r.getFilesystemType(ctx, pvc)
+			if fsType == "ext3" || fsType == "ext4" {
+				r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, "ExpandedInodePressure",
+					"PVC expanded from %s to %s due to inode pressure (storage: %.1f%%, inodes: %.1f%%) - WARNING: %s filesystem has fixed inode count, expansion will not resolve inode pressure",
+					currentSize.String(), newSize.String(), volumeMetrics.UsagePercent, volumeMetrics.InodesUsagePercent, fsType)
+			} else {
+				r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, "ExpandedInodePressure",
+					"PVC expanded from %s to %s due to inode pressure (storage: %.1f%%, inodes: %.1f%%) - %s filesystem",
+					currentSize.String(), newSize.String(), volumeMetrics.UsagePercent, volumeMetrics.InodesUsagePercent, fsType)
+			}
+		} else {
+			r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, "Expanded",
+				"PVC expanded from %s to %s (storage: %.1f%%, inodes: %.1f%%)",
+				currentSize.String(), newSize.String(), volumeMetrics.UsagePercent, volumeMetrics.InodesUsagePercent)
+		}
+	} else {
+		r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, "Expanded",
+			"PVC expanded from %s to %s (storage: %.1f%%)",
+			currentSize.String(), newSize.String(), volumeMetrics.UsagePercent)
+	}
 	log.Info("PVC expansion completed successfully", "from", currentSize.String(), "to", newSize.String())
 }
 
-func (r *PersistentVolumeClaimReconciler) isPVCEligible(pvc *corev1.PersistentVolumeClaim) bool {
+func (r *PersistentVolumeClaimReconciler) IsPVCEligible(pvc *corev1.PersistentVolumeClaim) bool {
 	if pvc.Spec.VolumeMode != nil && *pvc.Spec.VolumeMode != corev1.PersistentVolumeFilesystem {
 		return false
 	}
@@ -212,7 +256,7 @@ func (r *PersistentVolumeClaimReconciler) isPVCEligible(pvc *corev1.PersistentVo
 	return true
 }
 
-func (r *PersistentVolumeClaimReconciler) isStorageClassExpandable(ctx context.Context, pvc *corev1.PersistentVolumeClaim) bool {
+func (r *PersistentVolumeClaimReconciler) IsStorageClassExpandable(ctx context.Context, pvc *corev1.PersistentVolumeClaim) bool {
 	if pvc.Spec.StorageClassName == nil {
 		return false
 	}
@@ -224,15 +268,36 @@ func (r *PersistentVolumeClaimReconciler) isStorageClassExpandable(ctx context.C
 
 	var sc storagev1.StorageClass
 	if err := r.Get(ctx, types.NamespacedName{Name: scName}, &sc); err != nil {
+		metrics.RecordKubernetesClientRequest("get_storageclass", "failed")
 		return false
 	}
+	metrics.RecordKubernetesClientRequest("get_storageclass", "success")
 
 	expandable := sc.AllowVolumeExpansion != nil && *sc.AllowVolumeExpansion
 	r.storageCache.Set(scName, expandable)
 	return expandable
 }
 
-func (r *PersistentVolumeClaimReconciler) expandPVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim, config *annotations.PVCConfig) error {
+func (r *PersistentVolumeClaimReconciler) getFilesystemType(ctx context.Context, pvc *corev1.PersistentVolumeClaim) string {
+	if pvc.Spec.StorageClassName == nil {
+		return "unknown"
+	}
+
+	var sc storagev1.StorageClass
+	if err := r.Get(ctx, types.NamespacedName{Name: *pvc.Spec.StorageClassName}, &sc); err != nil {
+		return "unknown"
+	}
+
+	if fsType, exists := sc.Parameters["fsType"]; exists {
+		return fsType
+	}
+	if fsType, exists := sc.Parameters["csi.storage.k8s.io/fstype"]; exists {
+		return fsType
+	}
+	return "ext4"
+}
+
+func (r *PersistentVolumeClaimReconciler) ExpandPVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim, config *annotations.PVCConfig) error {
 	log := log.FromContext(ctx).WithValues("pvc", pvc.Name, "namespace", pvc.Namespace)
 	currentSize := pvc.Status.Capacity[corev1.ResourceStorage]
 	newSize, err := config.CalculateNewSize(currentSize)
@@ -241,7 +306,7 @@ func (r *PersistentVolumeClaimReconciler) expandPVC(ctx context.Context, pvc *co
 	}
 
 	if config.ExceedsMaxSize(newSize) {
-		metrics.MaxSizeReachedTotal.WithLabelValues(pvc.Name, pvc.Namespace).Inc()
+		metrics.RecordLimitReached(pvc.Name, pvc.Namespace)
 		return fmt.Errorf("new size %s exceeds max size %s", newSize.String(), config.MaxSize.String())
 	}
 
@@ -250,23 +315,23 @@ func (r *PersistentVolumeClaimReconciler) expandPVC(ctx context.Context, pvc *co
 		return nil
 	}
 
-
 	pvcCopy := pvc.DeepCopy()
 	pvcCopy.Spec.Resources.Requests[corev1.ResourceStorage] = newSize
 	annotations.UpdateLastExpansion(pvcCopy)
 
 	if err := r.Update(ctx, pvcCopy); err != nil {
-
+		metrics.RecordKubernetesClientRequest("update_pvc", "failed")
 		if client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("failed to update PVC spec: %w", err)
 		}
 		return fmt.Errorf("PVC not found during update: %w", err)
 	}
+	metrics.RecordKubernetesClientRequest("update_pvc", "success")
 
 	return nil
 }
 
 func (r *PersistentVolumeClaimReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	
+
 	return nil
 }

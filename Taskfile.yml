@@ -1,118 +1,104 @@
 version: '3'
 
 includes:
-  test:
-    taskfile: ./test/Taskfile.yml
-    dir: ./test
+  test:e2e:
+    taskfile: ./e2e/Taskfile.yml
+    dir: ./e2e
 
 vars:
   IMG: logiciq/pvc-chonker:latest
-  CLUSTER_NAME: pvc-chonker-test
+  CLUSTER_NAME: chonker-e2e
 
 tasks:
+  # Main development tasks
   default:
     desc: Build the project
     cmds:
-      - task: build
+      - task: go:build
 
-  help:
-    desc: Display available tasks
+  dev:
+    desc: Run controller locally
+    deps: [go:fmt, go:vet]
     cmds:
-      - task --list
+      - go run ./cmd/main.go
 
-  check:
-    desc: Run all checks (fmt, vet, unit tests)
-    deps: [fmt, vet]
+  # Go tasks
+  go:build:
+    desc: Build manager binary
+    deps: [go:fmt, go:vet]
     cmds:
-      - task: test-unit
+      - go build -o bin/manager cmd/main.go
 
-  fmt:
-    desc: Run go fmt against code
+  go:fmt:
+    desc: Format code
     cmds:
       - go fmt ./...
 
-  vet:
-    desc: Run go vet against code
+  go:vet:
+    desc: Vet code
     cmds:
       - go vet ./...
 
+  go:check:
+    desc: Run all checks
+    deps: [go:fmt, go:vet]
+    cmds:
+      - task: test:unit
+
+  go:clean:
+    desc: Clean artifacts
+    cmds:
+      - rm -f coverage.out coverage.html cover.out bin/manager
+
+  # Testing tasks
   test:
     desc: Run all tests
-    deps: [fmt, vet]
+    deps: [go:fmt, go:vet]
     cmds:
       - go test ./... -coverprofile cover.out
 
-  test-unit:
+  test:unit:
     desc: Run unit tests
     cmds:
       - go test -v ./pkg/... ./internal/...
 
-  test-coverage:
+  test:cov:
     desc: Run tests with coverage report
     cmds:
       - go test -v -coverprofile=coverage.out ./pkg/... ./internal/...
       - go tool cover -html=coverage.out -o coverage.html
       - echo "Coverage report generated at coverage.html"
 
-  test-clean:
-    desc: Clean test artifacts
-    cmds:
-      - rm -f coverage.out coverage.html cover.out
-
-  test-integration:
-    desc: Run integration tests
-    dir: test/integration
-    cmds:
-      - task: run
-
-  e2e-setup:
-    desc: Setup Kind cluster for E2E testing
-    dir: test/e2e
-    cmds:
-      - task: setup
-
-  e2e-run:
+  test:e2e:
     desc: Run E2E tests
-    dir: test/e2e
     cmds:
-      - task: run
+      - task: test:e2e:run
 
-  e2e-cleanup:
-    desc: Cleanup Kind cluster
-    dir: test/e2e
+  # Docker tasks
+  docker:
+    desc: Build docker image
     cmds:
-      - task: cleanup
+      - task: docker:build
 
-  build:
-    desc: Build manager binary
-    deps: [fmt, vet]
-    cmds:
-      - go build -o bin/manager cmd/main.go
-
-  run:
-    desc: Run controller from your host
-    deps: [fmt, vet]
-    cmds:
-      - go run ./cmd/main.go
-
-  docker-build:
-    desc: Build docker image with the manager
-    deps: [build]
+  docker:build:
+    desc: Build docker image
+    deps: [go:build]
     cmds:
       - docker build -t {{.IMG}} .
 
-  docker-push:
-    desc: Push docker image with the manager
+  docker:push:
+    desc: Push docker image
     cmds:
-      - docker login
       - docker push {{.IMG}}
 
+  # Deployment tasks
   deploy:
-    desc: Deploy controller to the K8s cluster specified in ~/.kube/config
+    desc: Deploy to current cluster
     cmds:
       - kubectl apply -f config/
 
   undeploy:
-    desc: Undeploy controller from the K8s cluster specified in ~/.kube/config
+    desc: Remove from current cluster
     cmds:
       - kubectl delete -f config/
+

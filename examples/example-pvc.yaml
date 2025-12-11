@@ -6,6 +6,7 @@ metadata:
   annotations:
     pvc-chonker.io/enabled: "true"
     pvc-chonker.io/threshold: "85%"
+    pvc-chonker.io/inodes-threshold: "90%"
     pvc-chonker.io/increase: "25%"
     pvc-chonker.io/max-size: "500Gi"
     pvc-chonker.io/min-scale-up: "2Gi"
@@ -26,6 +27,7 @@ metadata:
   annotations:
     pvc-chonker.io/enabled: "true"
     pvc-chonker.io/threshold: "90%"
+    pvc-chonker.io/inodes-threshold: "95%"
     pvc-chonker.io/increase: "5Gi"
     pvc-chonker.io/max-size: "100Gi"
     pvc-chonker.io/cooldown: "1h"
