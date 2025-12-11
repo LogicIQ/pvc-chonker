@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: database-storage
+  namespace: default
+  annotations:
+    pvc-chonker.io/enabled: "true"
+    pvc-chonker.io/threshold: "85%"
+    pvc-chonker.io/increase: "25%"
+    pvc-chonker.io/max-size: "500Gi"
+    pvc-chonker.io/min-scale-up: "2Gi"
+    pvc-chonker.io/cooldown: "30m"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: gp3
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: logs-storage
+  namespace: default
+  annotations:
+    pvc-chonker.io/enabled: "true"
+    pvc-chonker.io/threshold: "90%"
+    pvc-chonker.io/increase: "5Gi"
+    pvc-chonker.io/max-size: "100Gi"
+    pvc-chonker.io/cooldown: "1h"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: gp3

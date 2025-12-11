@@ -2,47 +2,45 @@
 
 ## Project Overview
 
-**pvc-chonker** is a cloud-agnostic Kubernetes operator for automatic PVC expansion with modular cloud provider support. Built with operator-sdk, it provides intelligent storage management without external dependencies like DynamoDB.
+**pvc-chonker** is a cloud-agnostic Kubernetes operator for automatic PVC expansion. Built with operator-sdk, it provides intelligent storage management without external dependencies, relying purely on Kubernetes CSI for volume expansion.
 
 ## Core Design Principles
 
-1. **Cloud Agnostic**: Modular architecture supporting multiple cloud providers
+1. **Cloud Agnostic**: Works with any CSI-compatible storage
 2. **No External Dependencies**: Self-contained operation without external databases
-3. **Annotation-Based**: Configuration through Kubernetes annotations (no CRDs initially)
-4. **Monitoring First**: Comprehensive metrics and observability
-5. **Extensible**: Plugin architecture for cloud provider support
+3. **Annotation-Based**: Simple configuration through Kubernetes annotations
+4. **Safety First**: Cooldown protection and resize detection
+5. **Configurable**: Global defaults with per-PVC overrides
 
 ## Phase 1: Annotation System & Core Controller
 
-### 1.1 Annotation System
-Define comprehensive annotation schema:
+### 1.1 Annotation System ✅ COMPLETED
 ```yaml
-# Core annotations
 pvc-chonker.io/enabled: "true"                    # Enable auto-expansion
-pvc-chonker.io/policy: "database-policy"          # Reference to PVCPolicy
-pvc-chonker.io/group: "db-cluster"                # Reference to PVCGroup
-pvc-chonker.io/threshold: "80%"                   # Storage threshold (override)
-pvc-chonker.io/inodes-threshold: "80%"            # Inode threshold (override)
-pvc-chonker.io/increase: "10%"                    # Expansion amount (override)
-pvc-chonker.io/max-size: "1000Gi"                 # Maximum size limit (override)
-
-# Cloud provider specific
-pvc-chonker.io/provider: "aws"                    # Cloud provider
-pvc-chonker.io/aws-volume-type: "gp3"             # AWS specific config
+pvc-chonker.io/threshold: "80%"                   # Storage threshold
+pvc-chonker.io/increase: "10%"                    # Expansion amount
+pvc-chonker.io/max-size: "1000Gi"                 # Maximum size limit
+pvc-chonker.io/min-scale-up: "1Gi"                # Minimum expansion amount
+pvc-chonker.io/cooldown: "15m"                    # Cooldown between expansions
 ```
 
-### 1.2 Core Controller Implementation
-- [ ] **PVC Controller**: Main reconciliation loop
-- [ ] **Metrics Collection**: Kubelet metrics integration
-- [ ] **Expansion Logic**: Core resizing algorithm
-  - Threshold-based expansion (storage + inodes)
-  - Configurable increase amounts (percentage/fixed)
-  - Maximum size limits enforcement
+### 1.2 Core Controller Implementation ✅ COMPLETED
+- [x] **PVC Controller**: Main reconciliation loop ✅
+- [x] **Metrics Collection**: Kubelet metrics integration ✅
+- [x] **Expansion Logic**: Core resizing algorithm ✅
+  - [x] Threshold-based expansion (storage usage)
+  - [x] Configurable increase amounts (percentage/fixed)
+  - [x] Maximum size limits enforcement
+  - [x] Cooldown period enforcement
+  - [x] Minimum scale-up enforcement
+  - [x] GiB boundary rounding
+  - [x] Resize operation detection
 
-### 1.3 AWS Provider Implementation
-- [ ] **AWS Interface**: Implement cloud provider interface
-- [ ] **EBS Integration**: Basic EBS volume support
-- [ ] **IAM Integration**: Proper AWS permissions handling
+### 1.3 Cloud-Agnostic Implementation
+- [ ] **Storage Class Validation**: Check allowVolumeExpansion capability
+- [ ] **Generic PVC Expansion**: Use Kubernetes CSI for all expansions
+- [ ] **Error Handling**: Handle expansion failures gracefully
+- [x] **Safety Checks**: Prevent concurrent operations ✅
 
 ### 1.4 Metrics & Monitoring
 - [ ] **Prometheus Metrics**: Comprehensive metric collection
@@ -90,13 +88,7 @@ pvc-chonker.io/aws-volume-type: "gp3"             # AWS specific config
 - [ ] **Integration Tests**: End-to-end testing with kind/minikube
 - [ ] **Cloud Provider Tests**: AWS integration testing
 
-## Phase 4: GCP Support
 
-### 4.1 GCP Provider Implementation
-- [ ] **GCP Interface**: Implement GCP provider
-- [ ] **Persistent Disk Support**: Basic GCP disk support
-- [ ] **GKE Integration**: Google Kubernetes Engine specific features
-- [ ] **IAM & Service Accounts**: GCP authentication handling
 
 ## Phase 5: Production Readiness
 
@@ -109,47 +101,29 @@ pvc-chonker.io/aws-volume-type: "gp3"             # AWS specific config
 - [ ] **Troubleshooting Guide**: Common issues and solutions
 - [ ] **Example Configurations**: Real-world use cases
 
-## Technical Architecture
+## Technical Architecture ✅ COMPLETED
 
-### Cloud Provider Interface
+### Annotation Configuration
 ```go
-type CloudProvider interface {
-    // Volume operations
-    CanExpand(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (bool, error)
-    GetVolumeConstraints(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (*VolumeConstraints, error)
-    ValidateExpansion(ctx context.Context, pvc *corev1.PersistentVolumeClaim, newSize resource.Quantity) error
-    
-    // Provider info
-    Name() string
-    SupportedStorageClasses() []string
-    DefaultConfiguration() *ProviderConfig
-}
-
-type VolumeConstraints struct {
-    MinSize     resource.Quantity
-    MaxSize     resource.Quantity
-    StepSize    resource.Quantity
-    VolumeType  string
+type PVCConfig struct {
+    Enabled       bool
+    Threshold     float64
+    Increase      string
+    MaxSize       resource.Quantity
+    Cooldown      time.Duration
+    MinScaleUp    resource.Quantity
+    LastExpansion *time.Time
 }
 ```
 
-### Configuration Management
+### Global Configuration
 ```go
-type ChonkerConfig struct {
-    // Global settings
-    WatchInterval     time.Duration
-    DefaultThreshold  string
-    DefaultIncrease   string
-    MinScaleUp        resource.Quantity
-    
-    // Provider settings
-    Provider          string
-    ProviderConfig    map[string]interface{}
-    
-    // Feature flags
-    EnableWebhook     bool
-    EnableMetrics     bool
-    DryRun           bool
+type GlobalConfig struct {
+    Threshold  float64
+    Increase   string
+    Cooldown   time.Duration
+    MinScaleUp resource.Quantity
+    MaxSize    resource.Quantity
 }
 ```
 
@@ -157,33 +131,34 @@ type ChonkerConfig struct {
 
 ### Core Capabilities
 1. **No External Dependencies**: Self-contained operation
-2. **Multi-Cloud Support**: Pluggable cloud provider architecture
-3. **Comprehensive Monitoring**: Enhanced metrics and observability
-4. **Modular Design**: Clean separation of concerns
-5. **Production Ready**: Comprehensive testing and documentation
-6. **Security First**: Minimal RBAC and security scanning
+2. **Cloud Agnostic**: Works with any CSI-compatible storage
+3. **Safety First**: Cooldown protection and resize detection
+4. **Simple Configuration**: Annotation-based with global defaults
+5. **Flexible Expansion**: Percentage or fixed size increases
+6. **Production Ready**: Comprehensive safety mechanisms
 
-### Advanced Features
-- **CRD-Based Configuration**: Kubernetes-native policy management
-- **Group Coordination**: PVCGroup CRD for cross-PVC coordination
-- **Mutating Webhook**: Policy-driven PVC creation interception
-- **Provider Abstraction**: Clean cloud provider interface
-- **Configuration Management**: Flexible configuration options
-- **Reliability**: Circuit breakers and safety mechanisms
-- **Observability**: Structured logging and comprehensive metrics
+### Implemented Features ✅
+- **Annotation System**: Complete configuration via annotations
+- **Cooldown Management**: Prevents rapid successive expansions
+- **Size Validation**: Respects maximum size limits and minimum increases
+- **Resize Detection**: Skips PVCs currently being resized
+- **GiB Rounding**: Clean storage boundaries
+- **Global Defaults**: Configurable via flags/env vars
 
 ## Success Metrics
 
 ### Phase 1 Success Criteria
-- [ ] Successfully expand AWS EBS volumes based on thresholds
-- [ ] Handle 50+ PVCs in test cluster
-- [ ] Complete metrics integration with Prometheus
-- [ ] Pass all unit and integration tests
+- [x] Annotation system implementation ✅
+- [x] Expansion logic with safety features ✅
+- [x] PVC controller implementation ✅
+- [x] Metrics collection integration ✅
+- [ ] Unit and integration tests
 
-### Phase 4 Success Criteria  
-- [ ] Support both AWS and GCP in production
-- [ ] Handle multiple PVCs across cloud providers
+### Phase 2 Success Criteria  
+- [ ] Support any CSI-compatible storage in production
+- [ ] Handle multiple PVCs across different storage classes
 - [ ] Complete documentation and examples
+- [ ] Helm chart for deployment
 
 ### Production Readiness Criteria
 - [ ] Stable operation in production environments

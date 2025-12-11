@@ -3,7 +3,13 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
+	"github.com/logicIQ/pvc-chonker/internal/controller"
+	"github.com/logicIQ/pvc-chonker/pkg/annotations"
+	"github.com/logicIQ/pvc-chonker/pkg/kubelet"
+
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -12,8 +18,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
-
-	"github.com/logicIQ/pvc-chonker/internal/controller"
 )
 
 var (
@@ -29,9 +33,25 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
+	var kubeletURL string
+	var watchInterval time.Duration
+	var threshold float64
+	var increase string
+	var cooldown time.Duration
+	var minScaleUp string
+	var maxSize string
+
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "Metrics endpoint address")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "Health probe endpoint address")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false, "Enable leader election")
+	flag.StringVar(&kubeletURL, "kubelet-url", "http://localhost:10255", "Kubelet metrics URL")
+	flag.DurationVar(&watchInterval, "watch-interval", 5*time.Minute, "Interval for checking PVC usage")
+	flag.Float64Var(&threshold, "default-threshold", 0, "Default storage threshold percentage")
+	flag.StringVar(&increase, "default-increase", "", "Default expansion amount")
+	flag.DurationVar(&cooldown, "default-cooldown", 0, "Default cooldown period")
+	flag.StringVar(&minScaleUp, "default-min-scale-up", "", "Default minimum scale-up amount")
+	flag.StringVar(&maxSize, "default-max-size", "", "Default maximum size limit")
+
 	opts := zap.Options{
 		Development: true,
 	}
@@ -52,11 +72,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.PersistentVolumeClaimReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PersistentVolumeClaim")
+	var minScaleUpQty, maxSizeQty resource.Quantity
+	if minScaleUp != "" {
+		if qty, err := resource.ParseQuantity(minScaleUp); err == nil {
+			minScaleUpQty = qty
+		}
+	}
+	if maxSize != "" {
+		if qty, err := resource.ParseQuantity(maxSize); err == nil {
+			maxSizeQty = qty
+		}
+	}
+
+	globalConfig := annotations.NewGlobalConfig(threshold, increase, cooldown, minScaleUpQty, maxSizeQty)
+	metricsCollector := kubelet.NewMetricsCollector(kubeletURL)
+
+	pvcController := &controller.PersistentVolumeClaimReconciler{
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		GlobalConfig:     globalConfig,
+		MetricsCollector: metricsCollector,
+		WatchInterval:    watchInterval,
+	}
+
+	// Add the controller as a runnable for periodic reconciliation only
+	if err = mgr.Add(pvcController); err != nil {
+		setupLog.Error(err, "unable to add controller as runnable")
 		os.Exit(1)
 	}
 
