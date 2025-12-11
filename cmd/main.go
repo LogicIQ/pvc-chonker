@@ -1,9 +1,12 @@
 package main
 
 import (
-	"flag"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/logicIQ/pvc-chonker/internal/controller"
 	"github.com/logicIQ/pvc-chonker/pkg/annotations"
@@ -31,42 +34,49 @@ func init() {
 }
 
 func main() {
-	var metricsAddr string
-	var enableLeaderElection bool
-	var probeAddr string
-	var kubeletURL string
-	var watchInterval time.Duration
-	var threshold float64
-	var increase string
-	var cooldown time.Duration
-	var minScaleUp string
-	var maxSize string
-	var dryRun bool
-	var logFormat string
-	var logLevel string
-	var concurrency int
+	var rootCmd = &cobra.Command{
+		Use:   "pvc-chonker",
+		Short: "Kubernetes PVC auto-expansion operator",
+		Run:   run,
+	}
 
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "Metrics endpoint address")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "Health probe endpoint address")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false, "Enable leader election")
-	flag.StringVar(&kubeletURL, "kubelet-url", "http://localhost:10255", "Kubelet metrics URL")
-	flag.DurationVar(&watchInterval, "watch-interval", 5*time.Minute, "Interval for checking PVC usage")
-	flag.Float64Var(&threshold, "default-threshold", 0, "Default storage threshold percentage")
-	flag.StringVar(&increase, "default-increase", "", "Default expansion amount")
-	flag.DurationVar(&cooldown, "default-cooldown", 0, "Default cooldown period")
-	flag.StringVar(&minScaleUp, "default-min-scale-up", "", "Default minimum scale-up amount")
-	flag.StringVar(&maxSize, "default-max-size", "", "Default maximum size limit")
-	flag.BoolVar(&dryRun, "dry-run", false, "Enable dry run mode (no actual PVC modifications)")
-	flag.StringVar(&logFormat, "log-format", "json", "Log format: json or console")
-	flag.StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, error")
-	flag.IntVar(&concurrency, "max-parallel", 4, "Maximum parallel PVC operations")
+	// Bind flags
+	rootCmd.Flags().String("metrics-bind-address", ":8080", "Metrics endpoint address")
+	rootCmd.Flags().String("health-probe-bind-address", ":8081", "Health probe endpoint address")
+	rootCmd.Flags().Bool("leader-elect", false, "Enable leader election")
+	rootCmd.Flags().String("kubelet-url", "http://localhost:10255", "Kubelet metrics URL")
+	rootCmd.Flags().Duration("watch-interval", 5*time.Minute, "Interval for checking PVC usage")
+	rootCmd.Flags().Float64("default-threshold", 0, "Default storage threshold percentage")
+	rootCmd.Flags().String("default-increase", "", "Default expansion amount")
+	rootCmd.Flags().Duration("default-cooldown", 0, "Default cooldown period")
+	rootCmd.Flags().String("default-min-scale-up", "", "Default minimum scale-up amount")
+	rootCmd.Flags().String("default-max-size", "", "Default maximum size limit")
+	rootCmd.Flags().Bool("dry-run", false, "Enable dry run mode (no actual PVC modifications)")
+	rootCmd.Flags().String("log-format", "json", "Log format: json or console")
+	rootCmd.Flags().String("log-level", "info", "Log level: debug, info, warn, error")
+	rootCmd.Flags().Int("max-parallel", 4, "Maximum parallel PVC operations")
+
+	// Bind viper to flags
+	viper.BindPFlags(rootCmd.Flags())
+
+	// Set environment variable prefix
+	viper.SetEnvPrefix("PVC_CHONKER")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.AutomaticEnv()
+
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func run(cmd *cobra.Command, args []string) {
+	logFormat := viper.GetString("log-format")
+	logLevel := viper.GetString("log-level")
+	dryRun := viper.GetBool("dry-run")
 
 	opts := zap.Options{
 		Development: logFormat == "console",
 	}
-	opts.BindFlags(flag.CommandLine)
-	flag.Parse()
-
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	setupLog.Info("Logging configuration", "format", logFormat, "level", logLevel)
@@ -76,9 +86,9 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                server.Options{BindAddress: metricsAddr},
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
+		Metrics:                server.Options{BindAddress: viper.GetString("metrics-bind-address")},
+		HealthProbeBindAddress: viper.GetString("health-probe-bind-address"),
+		LeaderElection:         viper.GetBool("leader-elect"),
 		LeaderElectionID:       "pvc-chonker-leader-election",
 	})
 	if err != nil {
@@ -87,29 +97,35 @@ func main() {
 	}
 
 	var minScaleUpQty, maxSizeQty resource.Quantity
-	if minScaleUp != "" {
+	if minScaleUp := viper.GetString("default-min-scale-up"); minScaleUp != "" {
 		if qty, err := resource.ParseQuantity(minScaleUp); err == nil {
 			minScaleUpQty = qty
 		}
 	}
-	if maxSize != "" {
+	if maxSize := viper.GetString("default-max-size"); maxSize != "" {
 		if qty, err := resource.ParseQuantity(maxSize); err == nil {
 			maxSizeQty = qty
 		}
 	}
 
-	globalConfig := annotations.NewGlobalConfig(threshold, increase, cooldown, minScaleUpQty, maxSizeQty)
-	metricsCollector := kubelet.NewMetricsCollector(kubeletURL)
+	globalConfig := annotations.NewGlobalConfig(
+		viper.GetFloat64("default-threshold"),
+		viper.GetString("default-increase"),
+		viper.GetDuration("default-cooldown"),
+		minScaleUpQty,
+		maxSizeQty,
+	)
+	metricsCollector := kubelet.NewMetricsCollector(viper.GetString("kubelet-url"))
 
 	pvcController := &controller.PersistentVolumeClaimReconciler{
 		Client:           mgr.GetClient(),
 		Scheme:           mgr.GetScheme(),
 		GlobalConfig:     globalConfig,
 		MetricsCollector: metricsCollector,
-		WatchInterval:    watchInterval,
+		WatchInterval:    viper.GetDuration("watch-interval"),
 		EventRecorder:    mgr.GetEventRecorderFor("pvc-chonker"),
 		DryRun:           dryRun,
-		MaxParallel:      concurrency,
+		MaxParallel:      viper.GetInt("max-parallel"),
 	}
 
 	// Add the controller as a runnable for periodic reconciliation only
@@ -128,7 +144,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager", "dryRun", dryRun, "watchInterval", watchInterval)
+	setupLog.Info("starting manager", "dryRun", dryRun, "watchInterval", viper.GetDuration("watch-interval"))
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)

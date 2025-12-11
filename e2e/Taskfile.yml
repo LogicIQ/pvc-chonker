@@ -41,8 +41,9 @@ tasks:
       - cd .. && task docker:build
       - kind load docker-image {{.IMG}} --name {{.CLUSTER_NAME}}
       - kubectl apply -R -f ../config/
-      - kubectl patch deployment controller-manager -n pvc-chonker-system -p '{"spec":{"template":{"spec":{"containers":[{"name":"manager","imagePullPolicy":"Never"}]}}}}'
+      - kubectl patch deployment controller-manager -n pvc-chonker-system -p '{"spec":{"template":{"spec":{"containers":[{"name":"manager","imagePullPolicy":"Never","env":[{"name":"PVC_CHONKER_WATCH_INTERVAL","value":"15s"}]}]}}}}}'
       - kubectl rollout restart deployment controller-manager -n pvc-chonker-system
+      - sleep 2
       - kubectl wait --for=condition=Ready pod -l control-plane=controller-manager -n pvc-chonker-system --timeout=120s
       - kubectl apply -f fixtures/test-pvc.yaml
       - kubectl delete pod test-pod --ignore-not-found=true
@@ -78,7 +79,7 @@ tasks:
       - kubectl exec test-pod -- df -h /data 2>/dev/null || echo "Pod not ready"
       - echo ""
       - echo "=== Recent Operator Logs ==="
-      - kubectl logs deployment/pvc-chonker-controller-manager -n pvc-chonker-system --tail=20 --since=5m
+      - kubectl logs deployment/controller-manager -n pvc-chonker-system --tail=20 --since=5m
 
   cleanup:
     desc: Clean up test environment
