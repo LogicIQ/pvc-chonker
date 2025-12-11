@@ -9,20 +9,16 @@ import (
 	"github.com/logicIQ/pvc-chonker/pkg/annotations"
 	"github.com/logicIQ/pvc-chonker/pkg/kubelet"
 
-	"context"
-	"fmt"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
+
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	"strings"
 )
 
 var (
@@ -129,21 +125,6 @@ func main() {
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
-	}
-
-	// Add custom health check for kubelet connectivity
-	if err := mgr.AddHealthzCheck("kubelet", func(req *http.Request) error {
-		ctx, cancel := context.WithTimeout(req.Context(), 5*time.Second)
-		defer cancel()
-		_, err := metricsCollector.GetVolumeMetrics(ctx, types.NamespacedName{Name: "test", Namespace: "test"})
-		// We expect this to fail for non-existent PVC, but connection should work
-		if err != nil && !strings.Contains(err.Error(), "not found") {
-			return fmt.Errorf("kubelet connectivity check failed: %w", err)
-		}
-		return nil
-	}); err != nil {
-		setupLog.Error(err, "unable to set up kubelet health check")
 		os.Exit(1)
 	}
 

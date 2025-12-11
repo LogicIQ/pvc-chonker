@@ -43,6 +43,12 @@ spec:
         - /manager
         args:
         - --leader-elect
+        - --kubelet-url=http://$(NODE_IP):10250
+        env:
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
         image: logiciq/pvc-chonker:latest
         name: manager
         securityContext:
