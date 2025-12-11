@@ -20,6 +20,12 @@ tasks:
     cmds:
       - task --list
 
+  check:
+    desc: Run all checks (fmt, vet, unit tests)
+    deps: [fmt, vet]
+    cmds:
+      - task: test-unit
+
   fmt:
     desc: Run go fmt against code
     cmds:
@@ -31,10 +37,27 @@ tasks:
       - go vet ./...
 
   test:
-    desc: Run tests
+    desc: Run all tests
     deps: [fmt, vet]
     cmds:
       - go test ./... -coverprofile cover.out
+
+  test-unit:
+    desc: Run unit tests
+    cmds:
+      - go test -v ./pkg/... ./internal/...
+
+  test-coverage:
+    desc: Run tests with coverage report
+    cmds:
+      - go test -v -coverprofile=coverage.out ./pkg/... ./internal/...
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "Coverage report generated at coverage.html"
+
+  test-clean:
+    desc: Clean test artifacts
+    cmds:
+      - rm -f coverage.out coverage.html cover.out
 
   build:
     desc: Build manager binary
