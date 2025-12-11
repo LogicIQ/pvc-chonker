@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -58,43 +59,32 @@ func (mc *MetricsCollector) GetVolumeMetrics(ctx context.Context, namespacedName
 }
 
 func (mc *MetricsCollector) parseVolumeMetrics(metricsText string, namespacedName types.NamespacedName) (*VolumeMetrics, error) {
-	var capacity, available int64
-	var found bool
+	capacityPattern := regexp.MustCompile(fmt.Sprintf(
+		`kubelet_volume_stats_capacity_bytes\{.*namespace="%s".*persistentvolumeclaim="%s".*\}\s+(\d+)`,
+		namespacedName.Namespace, namespacedName.Name))
+	availablePattern := regexp.MustCompile(fmt.Sprintf(
+		`kubelet_volume_stats_available_bytes\{.*namespace="%s".*persistentvolumeclaim="%s".*\}\s+(\d+)`,
+		namespacedName.Namespace, namespacedName.Name))
 
-	lines := strings.Split(metricsText, "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
-			continue
-		}
+	capacityMatch := capacityPattern.FindStringSubmatch(metricsText)
+	availableMatch := availablePattern.FindStringSubmatch(metricsText)
 
-		if strings.Contains(line, "kubelet_volume_stats_capacity_bytes") &&
-			strings.Contains(line, fmt.Sprintf(`namespace="%s"`, namespacedName.Namespace)) &&
-			strings.Contains(line, fmt.Sprintf(`persistentvolumeclaim="%s"`, namespacedName.Name)) {
-			
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				if val, err := strconv.ParseInt(parts[len(parts)-1], 10, 64); err == nil {
-					capacity = val
-					found = true
-				}
-			}
-		}
-
-		if strings.Contains(line, "kubelet_volume_stats_available_bytes") &&
-			strings.Contains(line, fmt.Sprintf(`namespace="%s"`, namespacedName.Namespace)) &&
-			strings.Contains(line, fmt.Sprintf(`persistentvolumeclaim="%s"`, namespacedName.Name)) {
-			
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				if val, err := strconv.ParseInt(parts[len(parts)-1], 10, 64); err == nil {
-					available = val
-				}
-			}
-		}
+	if len(capacityMatch) < 2 || len(availableMatch) < 2 {
+		return nil, fmt.Errorf("volume metrics not found for %s/%s", namespacedName.Namespace, namespacedName.Name)
 	}
 
-	if !found || capacity == 0 {
-		return nil, fmt.Errorf("volume metrics not found for %s/%s", namespacedName.Namespace, namespacedName.Name)
+	capacity, err := strconv.ParseInt(capacityMatch[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid capacity value: %w", err)
+	}
+
+	available, err := strconv.ParseInt(availableMatch[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid available value: %w", err)
+	}
+
+	if capacity == 0 {
+		return nil, fmt.Errorf("zero capacity for %s/%s", namespacedName.Namespace, namespacedName.Name)
 	}
 
 	used := capacity - available

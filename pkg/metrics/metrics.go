@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
@@ -97,5 +98,8 @@ func init() {
 		ReconciliationStatus,
 		LastUpsizeTime,
 		UpsizeStatus,
+		// Standard Go runtime metrics
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 }
