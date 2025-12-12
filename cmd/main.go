@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -44,7 +45,7 @@ func main() {
 	rootCmd.Flags().String("metrics-bind-address", ":8080", "Metrics endpoint address")
 	rootCmd.Flags().String("health-probe-bind-address", ":8081", "Health probe endpoint address")
 	rootCmd.Flags().Bool("leader-elect", false, "Enable leader election")
-	rootCmd.Flags().String("kubelet-url", "http://localhost:10255", "Kubelet metrics URL")
+	rootCmd.Flags().String("kubelet-url", "", "Custom kubelet metrics URL (for e2e testing, e.g. http://mock-service:8080)")
 	rootCmd.Flags().Duration("watch-interval", 5*time.Minute, "Interval for checking PVC usage")
 	rootCmd.Flags().Float64("default-threshold", 0, "Default storage threshold percentage")
 	rootCmd.Flags().String("default-increase", "", "Default expansion amount")
@@ -115,7 +116,23 @@ func run(cmd *cobra.Command, args []string) {
 		minScaleUpQty,
 		maxSizeQty,
 	)
-	metricsCollector := kubelet.NewMetricsCollector(viper.GetString("kubelet-url"))
+
+	// Use custom kubelet URL if provided via flag or env var (for e2e testing)
+	kubeletURL := viper.GetString("kubelet-url")
+	if kubeletURL != "" {
+		setupLog.Info("Using custom kubelet URL instead of K8s API proxy", "url", kubeletURL)
+	} else {
+		setupLog.Info("Using Kubernetes API proxy for kubelet metrics")
+	}
+	metricsCollector := kubelet.NewMetricsCollector(kubeletURL)
+
+	// Set Kubernetes clients on metrics collector
+	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create clientset")
+		os.Exit(1)
+	}
+	metricsCollector.SetClient(mgr.GetClient(), clientset)
 
 	pvcController := &controller.PersistentVolumeClaimReconciler{
 		Client:           mgr.GetClient(),

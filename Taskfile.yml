@@ -69,10 +69,25 @@ tasks:
       - go tool cover -html=coverage.out -o coverage.html
       - echo "Coverage report generated at coverage.html"
 
-  test:e2e:
-    desc: Run E2E tests
+  test:integration:
+    desc: Run integration tests with kind
     cmds:
       - task: test:e2e:run
+
+  test:deploy:
+    desc: Redeploy operator during development
+    cmds:
+      - task: test:e2e:deploy
+
+  test:cleanup:
+    desc: Clean up test environment
+    cmds:
+      - task: test:e2e:cleanup
+
+  test:csi:
+    desc: Test with real CSI VolumeStats
+    cmds:
+      - task: test:e2e:test-csi
 
   # Docker tasks
   docker:

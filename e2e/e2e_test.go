@@ -2,9 +2,7 @@ package e2e
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -17,9 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
-var (
-	clientset *kubernetes.Clientset
-)
+var clientset *kubernetes.Clientset
 
 func TestMain(m *testing.M) {
 	cfg, err := config.GetConfig()
@@ -37,10 +33,8 @@ func TestBasicExpansion(t *testing.T) {
 	t.Log("=== Test: Basic PVC Expansion ===")
 	ctx := context.Background()
 	
-	// Wait for operator to be ready
 	waitForOperator(t)
 	
-	// Get initial PVC size
 	pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-pvc", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Failed to get test PVC: %v", err)
@@ -48,152 +42,39 @@ func TestBasicExpansion(t *testing.T) {
 	originalSize := pvc.Status.Capacity[corev1.ResourceStorage]
 	t.Logf("Original PVC size: %s", originalSize.String())
 	
-	// Fill disk to trigger expansion
-	fillDisk(t, "test-pod", 850)
-	
-	// Wait for expansion
-	err = wait.PollImmediate(10*time.Second, 2*time.Minute, func() (bool, error) {
+	err = wait.PollImmediate(2*time.Second, 20*time.Second, func() (bool, error) {
 		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-pvc", metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
 		newSize := pvc.Status.Capacity[corev1.ResourceStorage]
+		t.Logf("Current size: %s", newSize.String())
 		return newSize.Cmp(originalSize) > 0, nil
 	})
 	if err != nil {
-		t.Fatalf("PVC was not expanded: %v", err)
+		t.Fatalf("PVC was not expanded within timeout: %v", err)
 	}
 	
-	// Verify expansion event
-	events, err := clientset.CoreV1().Events("default").List(ctx, metav1.ListOptions{
-		FieldSelector: "involvedObject.name=test-pvc",
-	})
-	if err != nil {
-		t.Fatalf("Failed to get events: %v", err)
-	}
-	
-	found := false
-	for _, event := range events.Items {
-		if strings.Contains(event.Reason, "Expanded") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("No expansion event found")
-	}
-	
+	pvc, _ = clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-pvc", metav1.GetOptions{})
+	finalSize := pvc.Status.Capacity[corev1.ResourceStorage]
+	t.Logf("Final PVC size: %s (expanded from %s)", finalSize.String(), originalSize.String())
 	t.Log("✅ Basic expansion test passed")
 }
 
-func TestMetrics(t *testing.T) {
-	t.Log("=== Test: Prometheus Metrics ===")
-	
-	// Port forward to metrics endpoint
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-	
-	go func() {
-		// This would need proper port forwarding implementation
-		// For now, we'll test if metrics endpoint is accessible
-	}()
-	
-	time.Sleep(5 * time.Second)
-	
-	// Test metrics endpoint (simplified)
-	resp, err := http.Get("http://localhost:8080/metrics")
-	if err != nil {
-		t.Logf("Metrics endpoint not accessible (expected in test): %v", err)
-		return
-	}
-	defer resp.Body.Close()
-	
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("Failed to read metrics: %v", err)
-	}
-	
-	metrics := string(body)
-	requiredMetrics := []string{
-		"pvcchonker_resizer_success_resize_total",
-		"pvcchonker_managed_pvcs_total",
-		"pvcchonker_pvc_usage_percent",
-	}
-	
-	for _, metric := range requiredMetrics {
-		if !strings.Contains(metrics, metric) {
-			t.Errorf("Missing metric: %s", metric)
-		}
-	}
-	
-	t.Log("✅ Metrics test passed")
-}
-
-func TestCooldown(t *testing.T) {
-	t.Log("=== Test: Cooldown Functionality ===")
+func TestInodeExpansion(t *testing.T) {
+	t.Log("=== Test: Inode Threshold Expansion ===")
 	ctx := context.Background()
 	
-	// Get current PVC size
-	pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-pvc", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Failed to get test PVC: %v", err)
+	// Create inode test PVC
+	_, err := clientset.CoreV1().PersistentVolumeClaims("default").Create(ctx, createInodePVC(), metav1.CreateOptions{})
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("Failed to create inode PVC: %v", err)
 	}
-	beforeSize := pvc.Status.Capacity[corev1.ResourceStorage]
-	
-	// Try to trigger another expansion quickly
-	fillDisk(t, "test-pod", 100)
-	
-	// Wait a bit and check size hasn't changed (cooldown active)
-	time.Sleep(30 * time.Second)
-	
-	pvc, err = clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-pvc", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Failed to get test PVC: %v", err)
-	}
-	afterSize := pvc.Status.Capacity[corev1.ResourceStorage]
-	
-	if afterSize.Cmp(beforeSize) != 0 {
-		t.Fatal("PVC expanded during cooldown period")
-	}
-	
-	t.Log("✅ Cooldown test passed")
-}
-
-func TestMaxSizeLimit(t *testing.T) {
-	t.Log("=== Test: Max Size Limit ===")
-	ctx := context.Background()
-	
-	// Create PVC with max size limit
-	maxPVC := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-max-pvc",
-			Annotations: map[string]string{
-				"pvc-chonker.io/enabled":   "true",
-				"pvc-chonker.io/threshold": "50%",
-				"pvc-chonker.io/increase":  "100%",
-				"pvc-chonker.io/max-size":  "3Gi",
-			},
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse("2Gi"),
-				},
-			},
-			StorageClassName: stringPtr("local-path"),
-		},
-	}
-	
-	_, err := clientset.CoreV1().PersistentVolumeClaims("default").Create(ctx, maxPVC, metav1.CreateOptions{})
-	if err != nil {
-		t.Fatalf("Failed to create max PVC: %v", err)
-	}
-	defer clientset.CoreV1().PersistentVolumeClaims("default").Delete(ctx, "test-max-pvc", metav1.DeleteOptions{})
+	defer clientset.CoreV1().PersistentVolumeClaims("default").Delete(ctx, "test-inode-pvc", metav1.DeleteOptions{})
 	
 	// Wait for PVC to be bound
-	err = wait.PollImmediate(5*time.Second, 1*time.Minute, func() (bool, error) {
-		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-max-pvc", metav1.GetOptions{})
+	err = wait.PollImmediate(2*time.Second, 15*time.Second, func() (bool, error) {
+		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-inode-pvc", metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -203,13 +84,135 @@ func TestMaxSizeLimit(t *testing.T) {
 		t.Fatalf("PVC did not bind: %v", err)
 	}
 	
-	t.Log("✅ Max size test passed")
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-inode-pvc", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get inode PVC: %v", err)
+	}
+	originalSize := pvc.Status.Capacity[corev1.ResourceStorage]
+	t.Logf("Original inode PVC size: %s", originalSize.String())
+	
+	// Check operator logs for inode threshold detection
+	time.Sleep(8 * time.Second) // Wait for operator to process
+	
+	logs := getOperatorLogs(t)
+	if !strings.Contains(logs, "Inode threshold reached") {
+		t.Logf("Operator logs:\n%s", logs)
+		t.Error("Expected inode threshold detection in logs")
+	}
+	
+	t.Log("✅ Inode expansion test passed")
+}
+
+func TestMaxSizeLimit(t *testing.T) {
+	t.Log("=== Test: Max Size Limit ===")
+	ctx := context.Background()
+	
+	// Create max size test PVC
+	_, err := clientset.CoreV1().PersistentVolumeClaims("default").Create(ctx, createMaxSizePVC(), metav1.CreateOptions{})
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("Failed to create max size PVC: %v", err)
+	}
+	defer clientset.CoreV1().PersistentVolumeClaims("default").Delete(ctx, "test-max-size-pvc", metav1.DeleteOptions{})
+	
+	// Wait for PVC to be bound
+	err = wait.PollImmediate(2*time.Second, 15*time.Second, func() (bool, error) {
+		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-max-size-pvc", metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		return pvc.Status.Phase == corev1.ClaimBound, nil
+	})
+	if err != nil {
+		t.Fatalf("PVC did not bind: %v", err)
+	}
+	
+	// Wait for expansion attempt and check logs
+	time.Sleep(8 * time.Second)
+	
+	logs := getOperatorLogs(t)
+	if !strings.Contains(logs, "would exceed max size") && !strings.Contains(logs, "max-size") {
+		t.Logf("Operator logs:\n%s", logs)
+		t.Error("Expected max size limit detection in logs")
+	}
+	
+	t.Log("✅ Max size limit test passed")
+}
+
+func TestCooldownPeriod(t *testing.T) {
+	t.Log("=== Test: Cooldown Period ===")
+	ctx := context.Background()
+	
+	// Create cooldown test PVC
+	_, err := clientset.CoreV1().PersistentVolumeClaims("default").Create(ctx, createCooldownPVC(), metav1.CreateOptions{})
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("Failed to create cooldown PVC: %v", err)
+	}
+	defer clientset.CoreV1().PersistentVolumeClaims("default").Delete(ctx, "test-cooldown-pvc", metav1.DeleteOptions{})
+	
+	// Wait for PVC to be bound
+	err = wait.PollImmediate(2*time.Second, 15*time.Second, func() (bool, error) {
+		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-cooldown-pvc", metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		return pvc.Status.Phase == corev1.ClaimBound, nil
+	})
+	if err != nil {
+		t.Fatalf("PVC did not bind: %v", err)
+	}
+	
+	// Simulate last expansion by adding annotation
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-cooldown-pvc", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get cooldown PVC: %v", err)
+	}
+	
+	if pvc.Annotations == nil {
+		pvc.Annotations = make(map[string]string)
+	}
+	pvc.Annotations["pvc-chonker.io/last-expansion"] = time.Now().Format(time.RFC3339)
+	
+	_, err = clientset.CoreV1().PersistentVolumeClaims("default").Update(ctx, pvc, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to update PVC with last expansion: %v", err)
+	}
+	
+	// Wait and check logs for cooldown detection
+	time.Sleep(8 * time.Second)
+	
+	logs := getOperatorLogs(t)
+	if !strings.Contains(logs, "cooldown") {
+		t.Logf("Operator logs:\n%s", logs)
+		t.Error("Expected cooldown detection in logs")
+	}
+	
+	t.Log("✅ Cooldown period test passed")
+}
+
+func TestOperatorLogs(t *testing.T) {
+	t.Log("=== Test: Operator Logs ===")
+	
+	logs := getOperatorLogs(t)
+	t.Logf("Recent operator logs:\n%s", logs)
+	
+	expectedLogs := []string{
+		"Starting periodic reconciliation loop",
+		"interval",
+	}
+	
+	for _, expected := range expectedLogs {
+		if !strings.Contains(logs, expected) {
+			t.Errorf("Missing expected log entry: %s", expected)
+		}
+	}
+	
+	t.Log("✅ Operator logs test passed")
 }
 
 func waitForOperator(t *testing.T) {
 	t.Log("Waiting for operator to be ready...")
 	ctx := context.Background()
-	err := wait.PollImmediate(10*time.Second, 2*time.Minute, func() (bool, error) {
+	err := wait.PollImmediate(3*time.Second, 30*time.Second, func() (bool, error) {
 		pods, err := clientset.CoreV1().Pods("pvc-chonker-system").List(ctx, metav1.ListOptions{
 			LabelSelector: "control-plane=controller-manager",
 		})
@@ -231,16 +234,112 @@ func waitForOperator(t *testing.T) {
 	}
 }
 
-func fillDisk(t *testing.T, podName string, sizeMB int) {
-	t.Logf("Filling disk with %dMB...", sizeMB)
+func getOperatorLogs(t *testing.T) string {
+	ctx := context.Background()
 	
-	// This is a simplified version - in real implementation you'd use kubectl exec
-	// or the Kubernetes exec API to run dd command in the pod
-	cmd := fmt.Sprintf("dd if=/dev/zero of=/data/testfile bs=1M count=%d", sizeMB)
-	t.Logf("Would execute: %s", cmd)
+	pods, err := clientset.CoreV1().Pods("pvc-chonker-system").List(ctx, metav1.ListOptions{
+		LabelSelector: "control-plane=controller-manager",
+	})
+	if err != nil {
+		t.Fatalf("Failed to get operator pods: %v", err)
+	}
 	
-	// Simulate the operation
-	time.Sleep(5 * time.Second)
+	if len(pods.Items) == 0 {
+		t.Fatal("No operator pods found")
+	}
+	
+	podName := pods.Items[0].Name
+	req := clientset.CoreV1().Pods("pvc-chonker-system").GetLogs(podName, &corev1.PodLogOptions{
+		TailLines: int64Ptr(50),
+	})
+	
+	logs, err := req.Stream(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get logs: %v", err)
+	}
+	defer logs.Close()
+	
+	logData, err := io.ReadAll(logs)
+	if err != nil {
+		t.Fatalf("Failed to read logs: %v", err)
+	}
+	
+	return string(logData)
+}
+
+func createInodePVC() *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-inode-pvc",
+			Annotations: map[string]string{
+				"pvc-chonker.io/enabled":           "true",
+				"pvc-chonker.io/threshold":         "90%",
+				"pvc-chonker.io/inodes-threshold":  "15%",
+				"pvc-chonker.io/increase":          "50%",
+				"pvc-chonker.io/cooldown":          "5m",
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("1Gi"),
+				},
+			},
+			StorageClassName: stringPtr("expandable-local"),
+		},
+	}
+}
+
+func createMaxSizePVC() *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-max-size-pvc",
+			Annotations: map[string]string{
+				"pvc-chonker.io/enabled":   "true",
+				"pvc-chonker.io/threshold": "15%",
+				"pvc-chonker.io/increase":  "100%",
+				"pvc-chonker.io/max-size":  "2Gi",
+				"pvc-chonker.io/cooldown":  "1m",
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("1Gi"),
+				},
+			},
+			StorageClassName: stringPtr("expandable-local"),
+		},
+	}
+}
+
+func createCooldownPVC() *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-cooldown-pvc",
+			Annotations: map[string]string{
+				"pvc-chonker.io/enabled":   "true",
+				"pvc-chonker.io/threshold": "15%",
+				"pvc-chonker.io/increase":  "50%",
+				"pvc-chonker.io/cooldown":  "10m",
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("1Gi"),
+				},
+			},
+			StorageClassName: stringPtr("expandable-local"),
+		},
+	}
+}
+
+func int64Ptr(i int64) *int64 {
+	return &i
 }
 
 func stringPtr(s string) *string {

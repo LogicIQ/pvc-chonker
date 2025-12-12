@@ -45,10 +45,12 @@ pvc-chonker.io/cooldown: "15m"                    # Cooldown between expansions
 
 ## Deployment & Operations
 
-### Helm Chart
-- [ ] **Production-ready Helm deployment**
-- [ ] **RBAC Templates**: Minimal privilege configurations
-- [ ] **Configuration values**: Configurable deployment options
+### Helm Chart ✅ COMPLETED
+- [x] **Production-ready Helm deployment** - Available at https://github.com/logicIQ/helm-charts ✅
+- [x] **RBAC Templates**: Minimal privilege configurations ✅
+- [x] **Configuration values**: Configurable deployment options ✅
+
+> **Note**: Helm charts are maintained in a separate repository for better release management and versioning.
 
 ### Advanced Features
 - [ ] **PVCPolicy Controller**: Manage PVC policy lifecycle
@@ -61,10 +63,12 @@ pvc-chonker.io/cooldown: "15m"                    # Cooldown between expansions
 - [ ] **Grafana Dashboard**: Pre-built monitoring dashboard
 - [ ] **Alert Rules**: Prometheus alerting rules
 
-### Testing
+### Testing ✅ COMPLETED
 - [x] **Unit Tests**: Comprehensive test coverage for core components ✅
 - [x] **Integration Tests**: envtest-based integration testing ✅
-- [x] **E2E Tests**: Kind-based end-to-end validation ✅
+- [x] **E2E Tests**: Kind-based end-to-end validation with mock kubelet metrics ✅
+- [x] **Automated Testing**: Full test automation with kind cluster setup and teardown ✅
+- [x] **Mock Infrastructure**: Mock kubelet metrics server for reliable testing ✅
 
 ## Documentation & Security
 
@@ -146,11 +150,11 @@ type GlobalConfig struct {
 - [x] Error handling and event recording ✅
 - [x] Structured JSON logging with ISO8601 timestamps ✅
 - [x] Dry run mode for testing without modifications ✅
-- [x] Comprehensive test coverage (unit, integration, E2E) with Go runtime metrics validation ✅
+- [x] Comprehensive test coverage (unit, integration, E2E) with kind-based automation, mock kubelet metrics, and Go runtime metrics validation ✅
 - [x] Performance optimization with caching strategies (storage classes, kubelet metrics) ✅
 
 ### Next Milestones
-- [ ] Production deployment with Helm chart
+- [x] Production deployment with Helm chart ✅
 - [ ] Advanced policy management (PVCPolicy, PVCGroup)
 - [ ] Complete documentation and examples
 - [ ] Performance optimization for large clusters

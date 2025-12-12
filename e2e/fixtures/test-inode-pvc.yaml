@@ -5,12 +5,13 @@ metadata:
   annotations:
     pvc-chonker.io/enabled: "true"
     pvc-chonker.io/threshold: "90%"
-    pvc-chonker.io/inodes-threshold: "70%"
-    pvc-chonker.io/increase: "20%"
+    pvc-chonker.io/inodes-threshold: "15%"
+    pvc-chonker.io/increase: "50%"
+    pvc-chonker.io/cooldown: "5m"
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
       storage: 1Gi
-  storageClassName: local-path
+  storageClassName: expandable-local

@@ -43,12 +43,15 @@ spec:
         - /manager
         args:
         - --leader-elect
-        - --kubelet-url=http://$(NODE_IP):10250
         env:
         - name: NODE_IP
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
+        - name: PVC_CHONKER_WATCH_INTERVAL
+          value: "15s"
+        - name: PVC_CHONKER_LOG_LEVEL
+          value: "debug"
         image: logiciq/pvc-chonker:latest
         name: manager
         securityContext:

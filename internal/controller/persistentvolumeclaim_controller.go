@@ -72,7 +72,7 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 		metrics.LastReconciliationTime.SetToCurrentTime()
 	}()
 
-	log.V(1).Info("Starting reconciliation cycle", "dryRun", r.DryRun)
+	log.Info("Starting reconciliation cycle", "dryRun", r.DryRun, "time", startTime.Format(time.RFC3339))
 
 	// Clear cache for fresh data each cycle
 	r.storageCache.Clear()
@@ -96,7 +96,10 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	}
 	pvcs.Items = managedPVCs
 
+	log.Info("Found PVCs", "total", len(pvcs.Items), "managed", len(managedPVCs))
+
 	// Fetch all metrics once per reconciliation cycle
+	log.V(1).Info("Fetching kubelet metrics")
 	metricsCache, err := r.MetricsCollector.GetAllVolumeMetrics(ctx)
 	if err != nil {
 		log.Error(err, "Failed to fetch kubelet metrics")
@@ -104,6 +107,10 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 		metrics.ReconciliationStatus.WithLabelValues("failure").Set(1)
 		metrics.ReconciliationStatus.WithLabelValues("success").Set(0)
 		return
+	}
+	log.V(1).Info("Successfully fetched kubelet metrics", "volumeCount", len(metricsCache.GetAll()))
+	for key, vm := range metricsCache.GetAll() {
+		log.V(1).Info("Found volume metrics", "pvc", key, "usage", vm.UsagePercent, "capacity", vm.CapacityBytes)
 	}
 	metrics.RecordKubeletClientRequest("success")
 	r.metricsCache = metricsCache
@@ -130,18 +137,21 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 
 	wg.Wait()
 
-	metrics.RecordLoopDuration(time.Since(startTime).Seconds())
+	duration := time.Since(startTime)
+	metrics.RecordLoopDuration(duration.Seconds())
 	metrics.ReconciliationStatus.WithLabelValues("success").Set(1)
 	metrics.ReconciliationStatus.WithLabelValues("failure").Set(0)
-	log.V(1).Info("Completed reconciliation cycle", "pvcCount", len(pvcs.Items), "duration", time.Since(startTime))
+	log.Info("Completed reconciliation cycle", "totalPVCs", len(pvcs.Items), "managedPVCs", len(managedPVCs), "duration", duration, "nextCycle", startTime.Add(r.WatchInterval).Format(time.RFC3339))
 }
 
 func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim) {
 	log := log.FromContext(ctx).WithValues("pvc", pvc.Name, "namespace", pvc.Namespace)
 
+	log.V(1).Info("Processing PVC", "phase", pvc.Status.Phase, "size", pvc.Status.Capacity[corev1.ResourceStorage])
+
 	config, err := annotations.ParsePVCAnnotations(pvc, r.GlobalConfig)
 	if err != nil {
-		log.V(3).Info("PVC not managed", "reason", err.Error())
+		log.V(2).Info("PVC not managed", "reason", err.Error())
 		return
 	}
 
@@ -171,10 +181,12 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	namespacedName := types.NamespacedName{Namespace: pvc.Namespace, Name: pvc.Name}
 	volumeMetrics, exists := r.metricsCache.Get(namespacedName)
 	if !exists {
-		log.V(2).Info("Volume metrics not found in cache")
+		log.V(1).Info("Volume metrics not found in cache", "availableMetrics", len(r.metricsCache.GetAll()))
 		metrics.RecordFailedResize(pvc.Name, pvc.Namespace, "metrics_not_found")
 		return
 	}
+
+	log.V(1).Info("Found volume metrics", "storageUsage", volumeMetrics.UsagePercent, "inodesUsage", volumeMetrics.InodesUsagePercent, "storageThreshold", config.Threshold, "inodesThreshold", config.InodesThreshold)
 
 	currentSize := pvc.Status.Capacity[corev1.ResourceStorage]
 	metrics.UpdatePVCMetrics(pvc.Name, pvc.Namespace, volumeMetrics.UsagePercent, currentSize.Value())

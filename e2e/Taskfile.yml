@@ -2,7 +2,7 @@ version: '3'
 
 vars:
   IMG: logiciq/pvc-chonker:latest
-  CLUSTER_NAME: chonker-e2e
+  CLUSTER_NAME: pvc-chonker
 
 tasks:
   install-kind:
@@ -14,36 +14,52 @@ tasks:
       - chmod +x ./kind
       - sudo mv ./kind /usr/local/bin/kind
 
-  kind-create:
-    desc: Create kind cluster for testing
+  create-cluster:
+    desc: Create kind cluster
     deps: [install-kind]
     status:
-      - kind get clusters | grep -q {{.CLUSTER_NAME}}
+      - kind get clusters | grep {{.CLUSTER_NAME}}
     cmds:
-      - mkdir -p /tmp/kind-storage
+      - mkdir -p /tmp/hostpathcsi
       - kind create cluster --name {{.CLUSTER_NAME}} --config fixtures/kind-config.yaml
-
-  kind-delete:
-    desc: Delete kind cluster
-    cmds:
-      - kind delete cluster --name {{.CLUSTER_NAME}}
+      - kubectl wait --for=condition=Ready nodes --all --timeout=60s
 
   setup:
-    desc: Setup test environment in kind cluster
+    desc: Setup test environment with mock metrics
+    deps: [create-cluster]
     cmds:
-      - kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml
       - kubectl apply -f fixtures/storage-class.yaml
-      - kubectl wait --for=condition=Ready pods -l app=local-path-provisioner -n local-path-storage --timeout=60s
+      - kubectl apply -f fixtures/mock-kubelet-metrics.yaml
+      - kubectl wait --for=condition=Ready pod -l app=mock-kubelet-metrics -n kube-system --timeout=60s
+
+
 
   deploy:
-    desc: Deploy operator to kind cluster
+    desc: Deploy operator to cluster with mock kubelet
+    deps: [setup]
     cmds:
       - cd .. && task docker:build
       - kind load docker-image {{.IMG}} --name {{.CLUSTER_NAME}}
       - kubectl apply -R -f ../config/
-      - kubectl patch deployment controller-manager -n pvc-chonker-system -p '{"spec":{"template":{"spec":{"containers":[{"name":"manager","imagePullPolicy":"Never","env":[{"name":"PVC_CHONKER_WATCH_INTERVAL","value":"15s"}]}]}}}}}'
+      - |
+        kubectl patch deployment controller-manager -n pvc-chonker-system -p '{
+          "spec": {
+            "template": {
+              "spec": {
+                "containers": [{
+                  "name": "manager",
+                  "imagePullPolicy": "Never",
+                  "env": [{
+                    "name": "PVC_CHONKER_KUBELET_URL",
+                    "value": "http://mock-kubelet-metrics.kube-system.svc.cluster.local:10255"
+                  }]
+                }]
+              }
+            }
+          }
+        }'
       - kubectl rollout restart deployment controller-manager -n pvc-chonker-system
-      - sleep 2
+      - sleep 12
       - kubectl wait --for=condition=Ready pod -l control-plane=controller-manager -n pvc-chonker-system --timeout=120s
       - kubectl apply -f fixtures/test-pvc.yaml
       - kubectl delete pod test-pod --ignore-not-found=true
@@ -52,8 +68,6 @@ tasks:
   run:
     desc: Run full E2E test
     cmds:
-      - task: kind-create
-      - task: setup
       - task: deploy
       - task: test
 
@@ -61,7 +75,7 @@ tasks:
     desc: Execute automated E2E tests
     cmds:
       - go mod tidy
-      - go test -v ./... -timeout=30m
+      - go test -v ./... -timeout=5m
 
   status:
     desc: Show comprehensive operator status and activity
@@ -80,13 +94,12 @@ tasks:
       - echo ""
       - echo "=== Recent Operator Logs ==="
       - kubectl logs deployment/controller-manager -n pvc-chonker-system --tail=20 --since=5m
+      - echo ""
+      - echo "=== Mock Kubelet Metrics ==="
+      - kubectl exec -n kube-system -l app=mock-kubelet-metrics -- curl -s localhost:10255/metrics | grep kubelet_volume_stats
+
 
   cleanup:
     desc: Clean up test environment
     cmds:
-      - task: kind-delete
-
-  cleanup-all:
-    desc: Delete all kind clusters
-    cmds:
-      - kind get clusters | xargs -r -I {} kind delete cluster --name {}
+      - kind delete cluster --name {{.CLUSTER_NAME}}

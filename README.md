@@ -1,6 +1,42 @@
 # pvc-chonker
 
-> ⚠️ **UNDER ACTIVE DEVELOPMENT** - This project is currently in early development and **NOT READY FOR PRODUCTION USE**. APIs and functionality may change without notice.
+```
+                    /\   /\                                                    
+                   (  o o  )                                                   
+                    \  ^  /                                                    
+                     ||||                                                      
+              .ooooooooooooooooooooo.                                         
+            .ooooooooooooooooooooooooo.                                       
+          .ooooooooooooooooooooooooooooo.                                     
+         .ooooooooooooooooooooooooooooooo.                                    
+        .ooooooooooooooooooooooooooooooooo.                                   
+       .ooooooooooooooooooooooooooooooooooo.                                  
+      .ooooooooooooooooooooooooooooooooooooo.                                 
+     .ooooooooooooooooooooooooooooooooooooooo.                                
+    .ooooooooooooooooooooooooooooooooooooooooo.                               
+   .ooooooooooooooooooooooooooooooooooooooooooo.                              
+  .ooooooooooooooooooooooooooooooooooooooooooooo.                             
+ .ooooooooooooooooooooooooooooooooooooooooooooooo.                            
+.ooooooooooooooooooooooooooooooooooooooooooooooooo.                           
+\ooooooooooooooooooooooooooooooooooooooooooooooooo/                           
+ \ooooooooooooooooooooooooooooooooooooooooooooooo/                            
+  \ooooooooooooooooooooooooooooooooooooooooooooo/                             
+   \ooooooooooooooooooooooooooooooooooooooooooo/                              
+    \ooooooooooooooooooooooooooooooooooooooooo/                               
+     \ooooooooooooooooooooooooooooooooooooooo/                                
+      \ooooooooooooooooooooooooooooooooooooo/                                 
+       \ooooooooooooooooooooooooooooooooooo/                                  
+        \ooooooooooooooooooooooooooooooooo/                                   
+         \ooooooooooooooooooooooooooooooo/                                    
+          \ooooooooooooooooooooooooooooo/                                     
+           \ooooooooooooooooooooooooooo/                                      
+            \ooooooooooooooooooooooooo/                                       
+             '~~~~~~~~~~~~~~~~~~~~~~~'                                        
+                ||||           ||||                                           
+                ||||           ||||                                           
+```
+
+> ⚠️ **BETA RELEASE** - This project is feature-complete with comprehensive testing but still in beta. Production use is possible but APIs may still evolve.
 
 A cloud-agnostic Kubernetes operator for automatic PVC expansion. Works with any CSI-compatible storage without external dependencies.
 
@@ -29,6 +65,32 @@ A cloud-agnostic Kubernetes operator for automatic PVC expansion. Works with any
 
 > **Note**: The operator requires access to kubelet metrics to monitor PVC usage. Most managed Kubernetes services enable this by default, but self-managed clusters may need additional configuration.
 
+## Installation
+
+### Helm Chart (Recommended)
+
+Install using Helm from the separate charts repository:
+
+```bash
+# Add the helm repository
+helm repo add pvc-chonker https://logiciq.github.io/helm-charts
+helm repo update
+
+# Install the operator
+helm install pvc-chonker pvc-chonker/pvc-chonker -n pvc-chonker-system --create-namespace
+```
+
+See the [helm-charts repository](https://github.com/logicIQ/helm-charts) for configuration options and values.
+
+### Manual Deployment
+
+```bash
+# Build and deploy manually
+task build
+task docker-build
+task deploy
+```
+
 ## Quick Start
 
 ### Integration Testing
@@ -51,18 +113,7 @@ Clean up test environment:
 task test:cleanup
 ```
 
-### Build and Deploy
 
-```bash
-# Build the operator
-task build
-
-# Build Docker image
-task docker-build
-
-# Deploy to cluster
-task deploy
-```
 
 ## Development
 

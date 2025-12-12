@@ -3,13 +3,13 @@ apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
   extraMounts:
-  - hostPath: /tmp/kind-storage
-    containerPath: /var/local-path-provisioner
+  - hostPath: /tmp/hostpathcsi
+    containerPath: /var/lib/csi-hostpath-data
+  extraPortMappings:
+  - containerPort: 10255
+    hostPort: 10255
+    protocol: TCP
 - role: worker
   extraMounts:
-  - hostPath: /tmp/kind-storage
-    containerPath: /var/local-path-provisioner
-- role: worker
-  extraMounts:
-  - hostPath: /tmp/kind-storage
-    containerPath: /var/local-path-provisioner
+  - hostPath: /tmp/hostpathcsi
+    containerPath: /var/lib/csi-hostpath-data

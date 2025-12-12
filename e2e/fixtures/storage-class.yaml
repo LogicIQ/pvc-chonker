@@ -4,4 +4,5 @@ metadata:
   name: expandable-local
 provisioner: rancher.io/local-path
 allowVolumeExpansion: true
+reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer

@@ -3,8 +3,6 @@ package kubelet
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"strconv"
 	"time"
@@ -24,47 +22,23 @@ type VolumeMetrics struct {
 	InodesUsagePercent float64
 }
 
-type MetricsCollector struct {
-	httpClient *http.Client
-	kubeletURL string
-}
-
-func NewMetricsCollector(kubeletURL string) *MetricsCollector {
-	return &MetricsCollector{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		kubeletURL: kubeletURL,
-	}
-}
-
 func (mc *MetricsCollector) GetVolumeMetrics(ctx context.Context, namespacedName types.NamespacedName) (*VolumeMetrics, error) {
 	startTime := time.Now()
 	defer func() {
 		metrics.KubeletClientResponseTime.Observe(time.Since(startTime).Seconds())
 	}()
 
-	metricsURL := fmt.Sprintf("%s/metrics", mc.kubeletURL)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", metricsURL, nil)
+	cache, err := mc.GetAllVolumeMetrics(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, err
 	}
 
-	resp, err := mc.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch metrics: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("kubelet metrics returned status %d", resp.StatusCode)
+	vm, exists := cache.Get(namespacedName)
+	if !exists {
+		return nil, fmt.Errorf("volume metrics not found for %s/%s", namespacedName.Namespace, namespacedName.Name)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	return mc.parseVolumeMetrics(string(body), namespacedName)
+	return vm, nil
 }
 
 func (mc *MetricsCollector) parseVolumeMetrics(metricsText string, namespacedName types.NamespacedName) (*VolumeMetrics, error) {

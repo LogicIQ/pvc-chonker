@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mock-kubelet-metrics
+  namespace: kube-system
+data:
+  metrics: |
+    # HELP kubelet_volume_stats_capacity_bytes [ALPHA] Capacity in bytes of the volume
+    # TYPE kubelet_volume_stats_capacity_bytes gauge
+    kubelet_volume_stats_capacity_bytes{namespace="default",persistentvolumeclaim="test-pvc"} 1073741824
+    kubelet_volume_stats_capacity_bytes{namespace="default",persistentvolumeclaim="test-inode-pvc"} 1073741824
+    kubelet_volume_stats_capacity_bytes{namespace="default",persistentvolumeclaim="test-max-size-pvc"} 1073741824
+    kubelet_volume_stats_capacity_bytes{namespace="default",persistentvolumeclaim="test-cooldown-pvc"} 1073741824
+    # HELP kubelet_volume_stats_available_bytes [ALPHA] Number of available bytes in the volume
+    # TYPE kubelet_volume_stats_available_bytes gauge
+    kubelet_volume_stats_available_bytes{namespace="default",persistentvolumeclaim="test-pvc"} 858993459
+    kubelet_volume_stats_available_bytes{namespace="default",persistentvolumeclaim="test-inode-pvc"} 966367641
+    kubelet_volume_stats_available_bytes{namespace="default",persistentvolumeclaim="test-max-size-pvc"} 912680550
+    kubelet_volume_stats_available_bytes{namespace="default",persistentvolumeclaim="test-cooldown-pvc"} 912680550
+    # HELP kubelet_volume_stats_inodes [ALPHA] Maximum number of inodes in the volume
+    # TYPE kubelet_volume_stats_inodes gauge
+    kubelet_volume_stats_inodes{namespace="default",persistentvolumeclaim="test-pvc"} 65536
+    kubelet_volume_stats_inodes{namespace="default",persistentvolumeclaim="test-inode-pvc"} 65536
+    kubelet_volume_stats_inodes{namespace="default",persistentvolumeclaim="test-max-size-pvc"} 65536
+    kubelet_volume_stats_inodes{namespace="default",persistentvolumeclaim="test-cooldown-pvc"} 65536
+    # HELP kubelet_volume_stats_inodes_used [ALPHA] Number of used inodes in the volume
+    # TYPE kubelet_volume_stats_inodes_used gauge
+    kubelet_volume_stats_inodes_used{namespace="default",persistentvolumeclaim="test-pvc"} 13107
+    kubelet_volume_stats_inodes_used{namespace="default",persistentvolumeclaim="test-inode-pvc"} 13107
+    kubelet_volume_stats_inodes_used{namespace="default",persistentvolumeclaim="test-max-size-pvc"} 6553
+    kubelet_volume_stats_inodes_used{namespace="default",persistentvolumeclaim="test-cooldown-pvc"} 6553
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: mock-kubelet-metrics
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: mock-kubelet-metrics
+  template:
+    metadata:
+      labels:
+        app: mock-kubelet-metrics
+    spec:
+      hostNetwork: true
+      containers:
+      - name: mock-server
+        image: nginx:alpine
+        ports:
+        - containerPort: 10255
+          hostPort: 10255
+        volumeMounts:
+        - name: metrics
+          mountPath: /usr/share/nginx/html
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
+      volumes:
+      - name: metrics
+        configMap:
+          name: mock-kubelet-metrics
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-kubelet-metrics
+  namespace: kube-system
+spec:
+  selector:
+    app: mock-kubelet-metrics
+  ports:
+  - port: 10255
+    targetPort: 10255
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: kube-system
+data:
+  default.conf: |
+    server {
+        listen 10255;
+        location /metrics {
+            add_header Content-Type text/plain;
+            alias /usr/share/nginx/html/metrics;
+        }
+    }
