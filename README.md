@@ -69,23 +69,27 @@ A cloud-agnostic Kubernetes operator for automatic PVC expansion. Works with any
 
 ### Helm Chart (Recommended)
 
-Install using Helm from the separate charts repository:
-
 ```bash
-# Add the helm repository
 helm repo add pvc-chonker https://logiciq.github.io/helm-charts
 helm repo update
-
-# Install the operator
 helm install pvc-chonker pvc-chonker/pvc-chonker -n pvc-chonker-system --create-namespace
 ```
 
-See the [helm-charts repository](https://github.com/logicIQ/helm-charts) for configuration options and values.
+### Docker
+
+```bash
+docker pull logiciq/pvc-chonker:latest
+```
+
+### Binary Downloads
+
+Download platform-specific binaries from [GitHub Releases](https://github.com/logicIQ/pvc-chonker/releases):
+- Linux (amd64, arm64)
+- macOS (amd64, arm64)
 
 ### Manual Deployment
 
 ```bash
-# Build and deploy manually
 task build
 task docker-build
 task deploy
@@ -93,24 +97,33 @@ task deploy
 
 ## Quick Start
 
+### Basic Usage
+
+Annotate your PVC to enable auto-expansion:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+  annotations:
+    pvc-chonker.io/enabled: "true"
+    pvc-chonker.io/threshold: "80%"
+    pvc-chonker.io/increase: "20%"
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: your-expandable-storage-class
+  resources:
+    requests:
+      storage: 10Gi
+```
+
 ### Integration Testing
 
-Run integration tests with kind:
-
 ```bash
-task test:integration
-```
-
-Redeploy operator during development:
-
-```bash
-task test:deploy
-```
-
-Clean up test environment:
-
-```bash
-task test:cleanup
+task test:integration  # Run e2e tests
+task test:deploy      # Redeploy during development
+task test:cleanup     # Clean up test environment
 ```
 
 
