@@ -27,7 +27,10 @@ tasks:
     desc: Build manager binary
     deps: [go:fmt, go:vet]
     cmds:
-      - go build -o bin/manager cmd/main.go
+      - |
+        VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+        GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+        go build -ldflags="-X main.version=${VERSION} -X main.gitHash=${GIT_HASH}" -o bin/manager cmd/main.go
 
   go:fmt:
     desc: Format code

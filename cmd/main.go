@@ -28,6 +28,8 @@ import (
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+	version  = "dev"
+	gitHash  = "unknown"
 )
 
 func init() {
@@ -80,6 +82,7 @@ func run(cmd *cobra.Command, args []string) {
 	}
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+	setupLog.Info("PVC Chonker starting", "version", version, "gitHash", gitHash)
 	setupLog.Info("Logging configuration", "format", logFormat, "level", logLevel)
 	if dryRun {
 		setupLog.Info("Starting in DRY RUN mode - no PVC modifications will be made")
