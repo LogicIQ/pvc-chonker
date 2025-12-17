@@ -5,42 +5,44 @@ vars:
   CLUSTER_NAME: pvc-chonker
 
 tasks:
-  install-kind:
-    desc: Install kind if not present
-    status:
-      - which kind
+  e2e:
+    desc: Run complete E2E test suite (single command)
     cmds:
-      - curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-      - chmod +x ./kind
-      - sudo mv ./kind /usr/local/bin/kind
+      - echo "Starting complete E2E test suite with Minikube + CSI HostPath"
+      - task: create-cluster
+      - task: setup
+      - task: deploy
+      - task: test
+      - echo "E2E test suite completed successfully"
 
   create-cluster:
-    desc: Create kind cluster
-    deps: [install-kind]
+    desc: Create minikube cluster with CSI HostPath driver
     status:
-      - kind get clusters | grep {{.CLUSTER_NAME}}
+      - minikube status -p {{.CLUSTER_NAME}} | grep Running
     cmds:
-      - mkdir -p /tmp/hostpathcsi
-      - kind create cluster --name {{.CLUSTER_NAME}} --config fixtures/kind-config.yaml
-      - kubectl wait --for=condition=Ready nodes --all --timeout=60s
+      - echo "Creating minikube cluster with CSI HostPath driver..."
+      - MINIKUBE_IN_STYLE=false minikube start -p {{.CLUSTER_NAME}} --addons=csi-hostpath-driver --kubernetes-version=v1.28.0
+      - kubectl wait --for=condition=Ready nodes --all --timeout=120s
+      - echo "Cluster created and ready"
 
   setup:
-    desc: Setup test environment with mock metrics
+    desc: Setup test environment with CSI HostPath storage
     deps: [create-cluster]
     cmds:
+      - echo "Setting up test environment..."
       - kubectl apply -f fixtures/storage-class.yaml
-      - kubectl apply -f fixtures/mock-kubelet-metrics.yaml
-      - kubectl wait --for=condition=Ready pod -l app=mock-kubelet-metrics -n kube-system --timeout=60s
-
-
+      - kubectl wait --for=condition=Ready pod -l addonmanager.kubernetes.io/mode=Reconcile -n kube-system --timeout=120s
+      - echo "CSI HostPath driver ready"
 
   deploy:
-    desc: Deploy operator to cluster with mock kubelet
+    desc: Deploy operator to cluster
     deps: [setup]
     cmds:
+      - echo "Building and deploying operator..."
       - cd .. && task docker:build
-      - kind load docker-image {{.IMG}} --name {{.CLUSTER_NAME}}
+      - minikube image load {{.IMG}} -p {{.CLUSTER_NAME}}
       - kubectl apply -R -f ../config/
+      - sleep 5
       - |
         kubectl patch deployment controller-manager -n pvc-chonker-system -p '{
           "spec": {
@@ -50,8 +52,8 @@ tasks:
                   "name": "manager",
                   "imagePullPolicy": "Never",
                   "env": [{
-                    "name": "PVC_CHONKER_KUBELET_URL",
-                    "value": "http://mock-kubelet-metrics.kube-system.svc.cluster.local:10255"
+                    "name": "PVC_CHONKER_WATCH_INTERVAL",
+                    "value": "5s"
                   }]
                 }]
               }
@@ -59,47 +61,66 @@ tasks:
           }
         }'
       - kubectl rollout restart deployment controller-manager -n pvc-chonker-system
-      - sleep 12
-      - kubectl wait --for=condition=Ready pod -l control-plane=controller-manager -n pvc-chonker-system --timeout=120s
+      - sleep 10
+      - kubectl get pods -n pvc-chonker-system
+      - kubectl wait --for=condition=Available deployment/controller-manager -n pvc-chonker-system --timeout=180s
       - kubectl apply -f fixtures/test-pvc.yaml
       - kubectl delete pod test-pod --ignore-not-found=true
       - kubectl apply -f fixtures/test-pod.yaml
-
-  run:
-    desc: Run full E2E test
-    cmds:
-      - task: deploy
-      - task: test
+      - kubectl wait --for=condition=Ready pod test-pod --timeout=60s
+      - echo "Operator deployed and test workload ready"
 
   test:
     desc: Execute automated E2E tests
     cmds:
+      - echo "Running E2E tests..."
       - go mod tidy
-      - go test -v ./... -timeout=5m
+      - go test -v ./... -timeout=10m
+      - echo "All E2E tests passed"
+
+  verify-metrics:
+    desc: Verify kubelet volume metrics are available
+    deps: [setup]
+    cmds:
+      - echo "Verifying kubelet volume metrics..."
+      - kubectl apply -f fixtures/test-pvc.yaml
+      - kubectl delete pod test-pod --ignore-not-found=true
+      - kubectl apply -f fixtures/test-pod.yaml
+      - kubectl wait --for=condition=Ready pod test-pod --timeout=60s
+      - sleep 10
+      - kubectl get --raw /api/v1/nodes/{{.CLUSTER_NAME}}/proxy/metrics | grep kubelet_volume_stats
+      - echo "Volume metrics verified"
 
   status:
     desc: Show comprehensive operator status and activity
     cmds:
+      - echo "=== Cluster Status ==="
+      - kubectl get nodes
+      - echo ""
+      - echo "=== CSI Driver Status ==="
+      - kubectl get pods -n kube-system | grep csi
+      - echo ""
       - echo "=== Operator Status ==="
       - kubectl get pods -n pvc-chonker-system
       - echo ""
       - echo "=== PVC Status ==="
-      - kubectl get pvc test-pvc
+      - kubectl get pvc
       - echo ""
       - echo "=== Test Pod Status ==="
-      - kubectl get pod test-pod
+      - kubectl get pod test-pod 2>/dev/null || echo "Test pod not found"
       - echo ""
       - echo "=== Current Disk Usage ==="
       - kubectl exec test-pod -- df -h /data 2>/dev/null || echo "Pod not ready"
       - echo ""
       - echo "=== Recent Operator Logs ==="
-      - kubectl logs deployment/controller-manager -n pvc-chonker-system --tail=20 --since=5m
+      - kubectl logs deployment/controller-manager -n pvc-chonker-system --tail=20 --since=5m 2>/dev/null || echo "Operator not ready"
       - echo ""
-      - echo "=== Mock Kubelet Metrics ==="
-      - kubectl exec -n kube-system -l app=mock-kubelet-metrics -- curl -s localhost:10255/metrics | grep kubelet_volume_stats
-
+      - echo "=== Volume Metrics Sample ==="
+      - kubectl get --raw /api/v1/nodes/{{.CLUSTER_NAME}}/proxy/metrics 2>/dev/null | grep kubelet_volume_stats | head -5 || echo "Metrics not available"
 
   cleanup:
     desc: Clean up test environment
     cmds:
-      - kind delete cluster --name {{.CLUSTER_NAME}}
+      - echo "Cleaning up test environment..."
+      - MINIKUBE_IN_STYLE=false minikube delete -p {{.CLUSTER_NAME}}
+      - echo "Cleanup completed"

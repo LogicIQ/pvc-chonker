@@ -16,17 +16,17 @@ spec:
         df -h /data
         echo "Inode info:"
         df -i /data
-        echo "Mount info:"
-        mount | grep /data
-        echo "Disk usage:"
-        du -sh /data
-        echo "Creating test file..."
-        dd if=/dev/zero of=/data/testfile bs=1M count=100 2>/dev/null || true
+        echo "Creating large test file with fallocate..."
+        fallocate -l 950M /data/testfile 2>/dev/null || dd if=/dev/zero of=/data/testfile bs=1M count=950 2>/dev/null || true
         echo "Current usage after write:"
         df -h /data
         df -i /data
+        echo "Sleeping 60s to allow operator to detect..."
+        sleep 60
         echo "Cleaning up test file..."
         rm -f /data/testfile
+        echo "Usage after cleanup:"
+        df -h /data
         echo "Sleeping 30s..."
         echo ""
         sleep 30
