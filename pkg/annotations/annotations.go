@@ -27,6 +27,8 @@ const (
 	DefaultMinScaleUp      = 1 * 1024 * 1024 * 1024
 )
 
+var ErrPVCNotManaged = fmt.Errorf("PVC not managed by pvc-chonker")
+
 type GlobalConfig struct {
 	Threshold       float64
 	InodesThreshold float64

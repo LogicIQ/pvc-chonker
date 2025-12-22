@@ -14,7 +14,6 @@ const (
 	KubeletClientSubsystem    = "kubelet_client"
 )
 
-// Resizer metrics
 var (
 	SuccessResizeTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -86,7 +85,6 @@ var (
 	)
 )
 
-// Kubernetes client metrics
 var (
 	KubernetesClientFailTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -109,7 +107,6 @@ var (
 	)
 )
 
-// Kubelet client metrics
 var (
 	KubeletClientFailTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
@@ -141,7 +138,6 @@ var (
 	)
 )
 
-// Operational metrics
 var (
 	LastReconciliationTime = prometheus.NewGauge(
 		prometheus.GaugeOpts{
@@ -205,7 +201,6 @@ var (
 	)
 )
 
-// Helper functions for consistent metric updates
 func RecordSuccessfulResize(pvcName, namespace string) {
 	SuccessResizeTotal.WithLabelValues(pvcName, namespace).Inc()
 }

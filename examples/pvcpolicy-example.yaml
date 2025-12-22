@@ -1,0 +1,30 @@
+apiVersion: pvc-chonker.io/v1alpha1
+kind: PVCPolicy
+metadata:
+  name: database-policy
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      workload: database
+  template:
+    enabled: true
+    threshold: 85.0
+    inodesThreshold: 90.0
+    increase: "25%"
+    maxSize: "2000Gi"
+    minScaleUp: "50Gi"
+    cooldown: "30m"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  labels:
+    workload: database  # Matches policy selector
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd

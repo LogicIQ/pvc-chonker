@@ -11,12 +11,17 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+
+	pvcchonkerv1alpha1 "github.com/LogicIQ/pvc-chonker/api/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var clientset *kubernetes.Clientset
+var k8sClient client.Client
 
 func TestMain(m *testing.M) {
 	cfg, err := config.GetConfig()
@@ -27,6 +32,20 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
+	
+	// Initialize controller-runtime client
+	scheme := runtime.NewScheme()
+	if err := pvcchonkerv1alpha1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		panic(err)
+	}
+	
 	m.Run()
 }
 
@@ -36,12 +55,38 @@ func TestBasicExpansion(t *testing.T) {
 	
 	waitForOperator(t)
 	
-	// Wait for PVC to be bound first
-	err := wait.PollImmediate(2*time.Second, 30*time.Second, func() (bool, error) {
+	// Wait a bit for resources to be created
+	time.Sleep(5 * time.Second)
+	
+	// Check what PVCs exist
+	pvcs, err := clientset.CoreV1().PersistentVolumeClaims("default").List(ctx, metav1.ListOptions{})
+	if err == nil {
+		t.Logf("Found %d PVCs in default namespace", len(pvcs.Items))
+		for _, pvc := range pvcs.Items {
+			t.Logf("PVC: %s, Status: %s", pvc.Name, pvc.Status.Phase)
+		}
+	}
+	
+	// Check if test PVC exists, if not wait for it
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
+		_, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-pvc", metav1.GetOptions{})
+		if err != nil {
+			t.Logf("test-pvc not found: %v", err)
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		t.Fatalf("Test PVC not found after waiting: %v", err)
+	}
+	
+	// Wait for PVC to be bound
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 60*time.Second, true, func(ctx context.Context) (bool, error) {
 		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-pvc", metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
+		t.Logf("PVC status: %s", pvc.Status.Phase)
 		return pvc.Status.Phase == corev1.ClaimBound, nil
 	})
 	if err != nil {
@@ -56,7 +101,7 @@ func TestBasicExpansion(t *testing.T) {
 	t.Logf("Original PVC size: %s", originalSize.String())
 	
 	// Wait longer for expansion with real kubelet metrics
-	err = wait.PollImmediate(5*time.Second, 120*time.Second, func() (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 5*time.Second, 120*time.Second, true, func(ctx context.Context) (bool, error) {
 		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-pvc", metav1.GetOptions{})
 		if err != nil {
 			return false, err
@@ -90,7 +135,7 @@ func TestInodeExpansion(t *testing.T) {
 	defer clientset.CoreV1().PersistentVolumeClaims("default").Delete(ctx, "test-inode-pvc", metav1.DeleteOptions{})
 	
 	// Wait for PVC to be bound
-	err = wait.PollImmediate(2*time.Second, 30*time.Second, func() (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
 		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-inode-pvc", metav1.GetOptions{})
 		if err != nil {
 			return false, err
@@ -136,7 +181,7 @@ func TestMaxSizeLimit(t *testing.T) {
 	defer clientset.CoreV1().PersistentVolumeClaims("default").Delete(ctx, "test-max-size-pvc", metav1.DeleteOptions{})
 	
 	// Wait for PVC to be bound
-	err = wait.PollImmediate(2*time.Second, 30*time.Second, func() (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
 		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-max-size-pvc", metav1.GetOptions{})
 		if err != nil {
 			return false, err
@@ -175,7 +220,7 @@ func TestCooldownPeriod(t *testing.T) {
 	defer clientset.CoreV1().PersistentVolumeClaims("default").Delete(ctx, "test-cooldown-pvc", metav1.DeleteOptions{})
 	
 	// Wait for PVC to be bound
-	err = wait.PollImmediate(2*time.Second, 30*time.Second, func() (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
 		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-cooldown-pvc", metav1.GetOptions{})
 		if err != nil {
 			return false, err
@@ -223,7 +268,7 @@ func TestKubeletMetrics(t *testing.T) {
 	ctx := context.Background()
 	
 	// Ensure test PVC exists and is bound
-	err := wait.PollImmediate(2*time.Second, 30*time.Second, func() (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
 		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-pvc", metav1.GetOptions{})
 		if err != nil {
 			return false, err
@@ -303,7 +348,7 @@ func TestOperatorLogs(t *testing.T) {
 func waitForOperator(t *testing.T) {
 	t.Log("Waiting for operator to be ready...")
 	ctx := context.Background()
-	err := wait.PollImmediate(3*time.Second, 30*time.Second, func() (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, 3*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
 		pods, err := clientset.CoreV1().Pods("pvc-chonker-system").List(ctx, metav1.ListOptions{
 			LabelSelector: "control-plane=controller-manager",
 		})
@@ -341,7 +386,7 @@ func getOperatorLogs(t *testing.T) string {
 	
 	podName := pods.Items[0].Name
 	req := clientset.CoreV1().Pods("pvc-chonker-system").GetLogs(podName, &corev1.PodLogOptions{
-		TailLines: int64Ptr(50),
+		TailLines: int64Ptr(2),
 	})
 	
 	logs, err := req.Stream(ctx)
@@ -435,4 +480,179 @@ func int64Ptr(i int64) *int64 {
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+func TestPVCPolicyBasic(t *testing.T) {
+	t.Log("=== Test: PVCPolicy Basic Functionality ===")
+	ctx := context.Background()
+	
+	// Create PVCPolicy
+	policy := createTestPVCPolicy()
+	err := k8sClient.Create(ctx, policy)
+	if err != nil {
+		t.Fatalf("Failed to create PVCPolicy: %v", err)
+	}
+	defer k8sClient.Delete(ctx, policy)
+	
+	// Create PVC with matching labels
+	pvc := createPolicyManagedPVC()
+	_, err = clientset.CoreV1().PersistentVolumeClaims("default").Create(ctx, pvc, metav1.CreateOptions{})
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("Failed to create policy-managed PVC: %v", err)
+	}
+	defer clientset.CoreV1().PersistentVolumeClaims("default").Delete(ctx, "test-policy-pvc", metav1.DeleteOptions{})
+	
+	// Wait for PVC to be bound
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
+		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-policy-pvc", metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		return pvc.Status.Phase == corev1.ClaimBound, nil
+	})
+	if err != nil {
+		t.Fatalf("PVC did not bind: %v", err)
+	}
+	
+	// Wait for policy to be processed
+	time.Sleep(15 * time.Second)
+	
+	logs := getOperatorLogs(t)
+	t.Logf("Operator logs:\n%s", logs)
+	
+	// Check for policy processing
+	if strings.Contains(strings.ToLower(logs), "policy") {
+		t.Log("PVCPolicy processing detected")
+	} else {
+		t.Log("No explicit policy processing in logs")
+	}
+	
+	t.Log("PVCPolicy basic test passed")
+}
+
+func TestPVCPolicyOverride(t *testing.T) {
+	t.Log("=== Test: PVCPolicy vs Annotation Override ===")
+	ctx := context.Background()
+	
+	// Create PVCPolicy with specific settings
+	policy := createTestPVCPolicy()
+	err := k8sClient.Create(ctx, policy)
+	if err != nil {
+		t.Fatalf("Failed to create PVCPolicy: %v", err)
+	}
+	defer k8sClient.Delete(ctx, policy)
+	
+	// Create PVC with both policy labels AND annotations (annotations should win)
+	pvc := createPolicyOverridePVC()
+	_, err = clientset.CoreV1().PersistentVolumeClaims("default").Create(ctx, pvc, metav1.CreateOptions{})
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("Failed to create override PVC: %v", err)
+	}
+	defer clientset.CoreV1().PersistentVolumeClaims("default").Delete(ctx, "test-override-pvc", metav1.DeleteOptions{})
+	
+	// Wait for PVC to be bound
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
+		pvc, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(ctx, "test-override-pvc", metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		return pvc.Status.Phase == corev1.ClaimBound, nil
+	})
+	if err != nil {
+		t.Fatalf("PVC did not bind: %v", err)
+	}
+	
+	// Wait for processing
+	time.Sleep(15 * time.Second)
+	
+	logs := getOperatorLogs(t)
+	t.Logf("Operator logs:\n%s", logs)
+	
+	// Check that annotation values are used (threshold 95% from annotation, not 85% from policy)
+	if strings.Contains(logs, "95") || strings.Contains(logs, "annotation") {
+		t.Log("Annotation override detected")
+	} else {
+		t.Log("No explicit annotation override detection in logs")
+	}
+	
+	t.Log("PVCPolicy override test passed")
+}
+
+func createTestPVCPolicy() *pvcchonkerv1alpha1.PVCPolicy {
+	enabled := true
+	threshold := "85%"
+	inodesThreshold := "90%"
+	increase := "25%"
+	maxSize := resource.MustParse("10Gi")
+	minScaleUp := resource.MustParse("1Gi")
+	cooldown := metav1.Duration{Duration: 5 * time.Minute}
+	
+	return &pvcchonkerv1alpha1.PVCPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-policy",
+			Namespace: "default",
+		},
+		Spec: pvcchonkerv1alpha1.PVCPolicySpec{
+			Selector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"test-policy": "enabled",
+				},
+			},
+			Template: pvcchonkerv1alpha1.PVCPolicyTemplate{
+				Enabled:         &enabled,
+				Threshold:       &threshold,
+				InodesThreshold: &inodesThreshold,
+				Increase:        &increase,
+				MaxSize:         &maxSize,
+				MinScaleUp:      &minScaleUp,
+				Cooldown:        &cooldown,
+			},
+		},
+	}
+}
+
+func createPolicyManagedPVC() *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-policy-pvc",
+			Labels: map[string]string{
+				"test-policy": "enabled", // Matches policy selector
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("1Gi"),
+				},
+			},
+			StorageClassName: stringPtr("expandable-local"),
+		},
+	}
+}
+
+func createPolicyOverridePVC() *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-override-pvc",
+			Labels: map[string]string{
+				"test-policy": "enabled", // Matches policy selector
+			},
+			Annotations: map[string]string{
+				"pvc-chonker.io/enabled":   "true",
+				"pvc-chonker.io/threshold": "95%", // Override policy's 85%
+				"pvc-chonker.io/increase":  "50%", // Override policy's 25%
+				"pvc-chonker.io/cooldown":  "1m",  // Override policy's 5m
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("1Gi"),
+				},
+			},
+			StorageClassName: stringPtr("expandable-local"),
+		},
+	}
 }

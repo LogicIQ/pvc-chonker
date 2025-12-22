@@ -7,21 +7,31 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - persistentvolumeclaims
+  - events
   verbs:
   - create
-  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  - nodes/proxy
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  verbs:
   - get
   - list
   - patch
   - update
   - watch
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumeclaims/finalizers
-  verbs:
-  - update
 - apiGroups:
   - ""
   resources:
@@ -31,26 +41,43 @@ rules:
   - patch
   - update
 - apiGroups:
-  - ""
+  - coordination.k8s.io
   resources:
-  - events
+  - leases
   verbs:
   - create
-  - patch
-- apiGroups:
-  - ""
-  resources:
-  - nodes
-  verbs:
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
-  - ""
+  - pvc-chonker.io
   resources:
-  - nodes/proxy
+  - pvcpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - pvc-chonker.io
+  resources:
+  - pvcpolicies/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - pvc-chonker.io
+  resources:
+  - pvcpolicies/status
   verbs:
   - get
+  - patch
+  - update
 - apiGroups:
   - storage.k8s.io
   resources:
@@ -58,14 +85,4 @@ rules:
   verbs:
   - get
   - list
-  - watch
-- apiGroups:
-  - coordination.k8s.io
-  resources:
-  - leases
-  verbs:
-  - create
-  - get
-  - list
-  - update
   - watch

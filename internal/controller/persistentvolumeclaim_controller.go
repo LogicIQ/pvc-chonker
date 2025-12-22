@@ -21,6 +21,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;patch;update
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims/status,verbs=get;patch;update
+// +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=create;delete;get;list;patch;update;watch
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;get;list;watch
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=nodes/proxy,verbs=get;list;watch
+
 type PersistentVolumeClaimReconciler struct {
 	client.Client
 	Scheme           *runtime.Scheme
@@ -32,18 +40,16 @@ type PersistentVolumeClaimReconciler struct {
 	MaxParallel      int
 	metricsCache     *kubelet.MetricsCache
 	storageCache     *cache.StorageClassCache
+	policyResolver   *annotations.PolicyResolver
 }
 
-// +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;update;patch
-// +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list
-// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 func (r *PersistentVolumeClaimReconciler) Start(ctx context.Context) error {
 	log := log.FromContext(ctx).WithName("pvcReconciler")
 	log.Info("Starting periodic reconciliation loop", "interval", r.WatchInterval, "dryRun", r.DryRun)
 
 	// Initialize storage class cache
 	r.storageCache = cache.NewStorageClassCache()
+	r.policyResolver = annotations.NewPolicyResolver(r.Client)
 
 	ticker := time.NewTicker(r.WatchInterval)
 	defer ticker.Stop()
@@ -74,7 +80,6 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 
 	log.Info("Starting reconciliation cycle", "dryRun", r.DryRun, "time", startTime.Format(time.RFC3339))
 
-	// Clear cache for fresh data each cycle
 	r.storageCache.Clear()
 
 	var pvcs corev1.PersistentVolumeClaimList
@@ -87,10 +92,9 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	}
 	metrics.RecordKubernetesClientRequest("list_pvcs", "success")
 
-	// Filter to only managed PVCs
 	managedPVCs := make([]corev1.PersistentVolumeClaim, 0, len(pvcs.Items))
 	for _, pvc := range pvcs.Items {
-		if pvc.Annotations != nil && pvc.Annotations[annotations.AnnotationEnabled] == "true" {
+		if _, err := r.policyResolver.ResolvePVCConfig(ctx, &pvc, r.GlobalConfig); err == nil {
 			managedPVCs = append(managedPVCs, pvc)
 		}
 	}
@@ -98,7 +102,6 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 
 	log.Info("Found PVCs", "total", len(pvcs.Items), "managed", len(managedPVCs))
 
-	// Fetch all metrics once per reconciliation cycle
 	log.V(1).Info("Fetching kubelet metrics")
 	metricsCache, err := r.MetricsCollector.GetAllVolumeMetrics(ctx)
 	if err != nil {
@@ -115,7 +118,6 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	metrics.RecordKubeletClientRequest("success")
 	r.metricsCache = metricsCache
 
-	// Update managed PVCs count
 	metrics.ManagedPVCsTotal.Set(float64(len(managedPVCs)))
 
 	if r.MaxParallel <= 0 {
@@ -149,7 +151,7 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 
 	log.V(1).Info("Processing PVC", "phase", pvc.Status.Phase, "size", pvc.Status.Capacity[corev1.ResourceStorage])
 
-	config, err := annotations.ParsePVCAnnotations(pvc, r.GlobalConfig)
+	config, err := r.policyResolver.ResolvePVCConfig(ctx, pvc, r.GlobalConfig)
 	if err != nil {
 		log.V(2).Info("PVC not managed", "reason", err.Error())
 		return

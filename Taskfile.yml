@@ -1,10 +1,5 @@
 version: '3'
 
-includes:
-  test:e2e:
-    taskfile: ./e2e/Taskfile.yml
-    dir: ./e2e
-
 vars:
   IMG: logiciq/pvc-chonker:latest
   CLUSTER_NAME: chonker-e2e
@@ -16,16 +11,25 @@ tasks:
     cmds:
       - task: go:build
 
-  dev:
-    desc: Run controller locally
-    deps: [go:fmt, go:vet]
+  dev:setup:
+    desc: Setup development environment
     cmds:
+      - task: go:manifests
+      - task: go:generate
+      - task: go:fmt
+
+  run:local:
+    desc: Run controller locally
+    cmds:
+      - task: go:manifests
+      - task: go:generate
+      - task: go:fmt
       - go run ./cmd/main.go
 
   # Go tasks
   go:build:
     desc: Build manager binary
-    deps: [go:fmt, go:vet]
+    deps: [go:fmt, go:generate, go:manifests]
     cmds:
       - |
         VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -33,71 +37,36 @@ tasks:
         go build -ldflags="-X main.version=${VERSION} -X main.gitHash=${GIT_HASH}" -o bin/manager cmd/main.go
 
   go:fmt:
-    desc: Format code
+    desc: Format and vet Go code
     cmds:
       - go fmt ./...
-
-  go:vet:
-    desc: Vet code
-    cmds:
       - go vet ./...
 
-  go:check:
-    desc: Run all checks
-    deps: [go:fmt, go:vet]
+  go:generate:
+    desc: Generate code containing DeepCopy methods
     cmds:
-      - task: test:unit
+      - controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
-  go:clean:
-    desc: Clean artifacts
+  go:manifests:
+    desc: Generate CRD manifests
     cmds:
-      - rm -f coverage.out coverage.html cover.out bin/manager
+      - controller-gen crd:headerFile="hack/boilerplate.go.txt" paths="./..." output:crd:artifacts:config=config/crd/bases
+      - controller-gen rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
-  # Testing tasks
-  test:
-    desc: Run all tests
-    deps: [go:fmt, go:vet]
+  go:test:
+    desc: Run all unit tests with coverage
+    deps: [go:fmt]
     cmds:
-      - go test ./... -coverprofile cover.out
+      - go test -v -race -coverprofile=coverage.out ./pkg/... ./internal/...
+      - go tool cover -func=coverage.out
+      - go tool cover -html=coverage.out -o coverage.html
 
-  test:unit:
-    desc: Run unit tests
+  go:test:unit:
+    desc: Run unit tests only
     cmds:
       - go test -v ./pkg/... ./internal/...
 
-  test:cov:
-    desc: Run tests with coverage report
-    cmds:
-      - go test -v -coverprofile=coverage.out ./pkg/... ./internal/...
-      - go tool cover -html=coverage.out -o coverage.html
-      - echo "Coverage report generated at coverage.html"
-
-  test:integration:
-    desc: Run integration tests with kind
-    cmds:
-      - task: test:e2e:run
-
-  test:deploy:
-    desc: Redeploy operator during development
-    cmds:
-      - task: test:e2e:deploy
-
-  test:cleanup:
-    desc: Clean up test environment
-    cmds:
-      - task: test:e2e:cleanup
-
-  test:csi:
-    desc: Test with real CSI VolumeStats
-    cmds:
-      - task: test:e2e:test-csi
-
   # Docker tasks
-  docker:
-    desc: Build docker image
-    cmds:
-      - task: docker:build
-
   docker:build:
     desc: Build docker image
     deps: [go:build]
@@ -109,14 +78,57 @@ tasks:
     cmds:
       - docker push {{.IMG}}
 
-  # Deployment tasks
-  deploy:
+  # Kubernetes tasks
+  k8s:install:
+    desc: Install CRDs into the cluster
+    cmds:
+      - task: go:manifests
+      - kubectl apply -f config/crd/bases/
+
+  k8s:uninstall:
+    desc: Uninstall CRDs from the cluster
+    cmds:
+      - kubectl delete -f config/crd/bases/ --ignore-not-found=true
+
+  k8s:deploy:
     desc: Deploy to current cluster
     cmds:
       - kubectl apply -f config/
 
-  undeploy:
+  k8s:undeploy:
     desc: Remove from current cluster
     cmds:
       - kubectl delete -f config/
+
+  # E2E tasks
+  e2e:run:
+    desc: Run complete e2e test suite
+    cmds:
+      - cd e2e && task e2e
+
+  e2e:test:
+    desc: Run e2e tests only (assumes cluster exists)
+    cmds:
+      - cd e2e && task test
+
+  e2e:setup:
+    desc: Setup e2e environment only
+    cmds:
+      - cd e2e && task setup
+
+  e2e:deploy:
+    desc: Deploy operator to e2e cluster
+    cmds:
+      - cd e2e && task deploy
+
+  e2e:cleanup:
+    desc: Cleanup e2e environment
+    cmds:
+      - cd e2e && task cleanup
+
+  # Utility tasks
+  clean:
+    desc: Clean artifacts
+    cmds:
+      - rm -f coverage.out coverage.html cover.out bin/manager
 

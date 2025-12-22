@@ -48,6 +48,8 @@ task cleanup
 The E2E tests cover:
 
 - **Basic PVC Expansion** - Volume expansion when storage threshold is reached
+- **PVCPolicy Management** - Policy-based configuration and label selection
+- **Annotation Override** - PVC annotations taking precedence over policies
 - **Kubelet Metrics** - Verification of required volume metrics availability
 - **Inode Monitoring** - Inode threshold detection and processing
 - **Max Size Limits** - Respecting maximum size constraints

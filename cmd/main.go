@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/logicIQ/pvc-chonker/api/v1alpha1"
 	"github.com/logicIQ/pvc-chonker/internal/controller"
 	"github.com/logicIQ/pvc-chonker/pkg/annotations"
 	"github.com/logicIQ/pvc-chonker/pkg/kubelet"
@@ -34,6 +35,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 }
 
 func main() {
@@ -151,6 +153,17 @@ func run(cmd *cobra.Command, args []string) {
 	// Add the controller as a runnable for periodic reconciliation only
 	if err = mgr.Add(pvcController); err != nil {
 		setupLog.Error(err, "unable to add controller as runnable")
+		os.Exit(1)
+	}
+
+	// Setup PVCPolicy controller
+	policyController := &controller.PVCPolicyReconciler{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		EventRecorder: mgr.GetEventRecorderFor("pvc-chonker-policy"),
+	}
+	if err = policyController.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create PVCPolicy controller")
 		os.Exit(1)
 	}
 

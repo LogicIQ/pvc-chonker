@@ -45,6 +45,7 @@ A cloud-agnostic Kubernetes operator for automatic PVC expansion. Works with any
 - **Cloud Agnostic**: Works with any CSI-compatible storage
 - **No External Dependencies**: Self-contained operation without external databases
 - **Annotation-Based**: Simple configuration through Kubernetes annotations
+- **Policy-Based**: Advanced configuration through PVCPolicy custom resources
 - **Cooldown Protection**: Prevents rapid successive expansions
 - **Resize Safety**: Checks for ongoing resize operations
 - **Configurable Defaults**: Global settings via flags/env vars with per-PVC overrides
@@ -70,9 +71,9 @@ A cloud-agnostic Kubernetes operator for automatic PVC expansion. Works with any
 ### Helm Chart (Recommended)
 
 ```bash
-helm repo add pvc-chonker https://logiciq.github.io/helm-charts
+helm repo add logiciq https://logiciq.github.io/helm-charts
 helm repo update
-helm install pvc-chonker pvc-chonker/pvc-chonker -n pvc-chonker-system --create-namespace
+helm install pvc-chonker logiciq/pvc-chonker -n pvc-chonker-system --create-namespace
 ```
 
 ### Docker
@@ -121,7 +122,7 @@ spec:
 ### Integration Testing
 
 ```bash
-task test:integration  # Run e2e tests
+task test:integration  # Run e2e tests 
 task test:deploy      # Redeploy during development
 task test:cleanup     # Clean up test environment
 ```
@@ -184,8 +185,67 @@ spec:
 
 Each setting follows this precedence order:
 1. **PVC Annotation** (highest priority)
-2. **Global Flag/Environment Variable** 
-3. **Built-in Default** (fallback)
+2. **PVCPolicy Custom Resource** (namespace-scoped policy)
+3. **Global Flag/Environment Variable** 
+4. **Built-in Default** (fallback)
+
+## PVCPolicy Configuration
+
+For advanced use cases, configure PVCs using PVCPolicy custom resources instead of individual annotations:
+
+```yaml
+apiVersion: pvc-chonker.io/v1alpha1
+kind: PVCPolicy
+metadata:
+  name: database-policy
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      workload: database
+  template:
+    enabled: true
+    threshold: 85.0
+    inodesThreshold: 90.0
+    increase: "25%"
+    maxSize: "2000Gi"
+    minScaleUp: "50Gi"
+    cooldown: "30m"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: production
+  labels:
+    workload: database  # Matches policy selector
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd
+```
+
+### PVCPolicy Benefits
+
+- **Centralized Management**: Define policies once, apply to multiple PVCs
+- **Label-Based Selection**: Automatically apply to PVCs with matching labels
+- **Namespace Scoped**: Policies only affect PVCs in the same namespace
+- **Annotation Override**: Individual PVC annotations always take precedence
+
+### PVCPolicy Fields
+
+| Field | Type | Description | Example |
+|-------|------|-------------|----------|
+| `selector` | LabelSelector | Which PVCs this policy applies to | `matchLabels: {workload: database}` |
+| `template.enabled` | bool | Enable auto-expansion | `true` |
+| `template.threshold` | float64 | Storage usage threshold | `85.0` |
+| `template.inodesThreshold` | float64 | Inode usage threshold | `90.0` |
+| `template.increase` | string | Expansion amount | `"25%"` or `"50Gi"` |
+| `template.maxSize` | Quantity | Maximum size limit | `"2000Gi"` |
+| `template.minScaleUp` | Quantity | Minimum expansion amount | `"50Gi"` |
+| `template.cooldown` | Duration | Cooldown between expansions | `"30m"` |
 
 ## Safety Features
 
@@ -234,6 +294,7 @@ increase(pvcchonker_resizer_failed_resize_total{reason="inode_pressure_fixed_fs"
 See the [`examples/`](examples/) directory for sample PVC configurations:
 
 - [`example-pvc.yaml`](examples/example-pvc.yaml) - Database and logs storage examples with different annotation patterns
+- [`pvcpolicy-example.yaml`](examples/pvcpolicy-example.yaml) - PVCPolicy configuration examples
 
 ### Database Storage Example
 

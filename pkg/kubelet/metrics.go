@@ -81,7 +81,6 @@ func (mc *MetricsCollector) parseVolumeMetrics(metricsText string, namespacedNam
 	used := capacity - available
 	usagePercent := float64(used) / float64(capacity) * 100
 
-	// Parse inode metrics (optional - not all volumes expose inode metrics)
 	var inodesTotal, inodesUsed, inodesFree int64
 	var inodesUsagePercent float64
 

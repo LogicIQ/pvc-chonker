@@ -1,0 +1,17 @@
+apiVersion: pvc-chonker.io/v1alpha1
+kind: PVCPolicy
+metadata:
+  name: test-policy
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      test-policy: enabled
+  template:
+    enabled: true
+    threshold: 85.0
+    inodesThreshold: 90.0
+    increase: "25%"
+    maxSize: "10Gi"
+    minScaleUp: "1Gi"
+    cooldown: "5m"

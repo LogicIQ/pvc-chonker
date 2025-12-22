@@ -53,7 +53,7 @@ pvc-chonker.io/cooldown: "15m"                    # Cooldown between expansions
 > **Note**: Helm charts are maintained in a separate repository for better release management and versioning.
 
 ### Advanced Features
-- [ ] **PVCPolicy Controller**: Manage PVC policy lifecycle
+- [ ] **PVCPolicy Controller**: Manage PVC policy lifecycle CR implementation ✅ IMPLEMENTED
 - [ ] **PVCGroup Controller**: Manage group coordination
 - [ ] **Mutating Admission Webhook**: PVC creation interception
 

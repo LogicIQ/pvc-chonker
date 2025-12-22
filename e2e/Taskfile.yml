@@ -21,9 +21,9 @@ tasks:
       - minikube status -p {{.CLUSTER_NAME}} | grep Running
     cmds:
       - echo "Creating minikube cluster with CSI HostPath driver..."
-      - MINIKUBE_IN_STYLE=false minikube start -p {{.CLUSTER_NAME}} --addons=csi-hostpath-driver --kubernetes-version=v1.28.0
+      - MINIKUBE_IN_STYLE=false minikube start -p {{.CLUSTER_NAME}} --cpus=2 --memory=4096 --disk-size=20g --driver=docker --cache-images=true --embed-certs=true --addons=csi-hostpath-driver
       - kubectl wait --for=condition=Ready nodes --all --timeout=120s
-      - echo "Cluster created and ready"
+      - echo "Cluster created with CSI driver enabled"
 
   setup:
     desc: Setup test environment with CSI HostPath storage
@@ -42,6 +42,8 @@ tasks:
       - cd .. && task docker:build
       - minikube image load {{.IMG}} -p {{.CLUSTER_NAME}}
       - kubectl apply -R -f ../config/
+      - echo "Ensuring RBAC permissions are updated..."
+      - kubectl apply -f ../config/rbac/role.yaml
       - sleep 5
       - |
         kubectl patch deployment controller-manager -n pvc-chonker-system -p '{

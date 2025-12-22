@@ -283,8 +283,6 @@ func TestExpandPVC(t *testing.T) {
 	}
 }
 
-// TestReconcilePVC is simplified to test the core logic without complex mocking
-// Full integration tests would be better suited for testing the complete reconciliation flow
 func TestReconcilePVCLogic(t *testing.T) {
 	// This test focuses on the individual components that can be easily unit tested
 	// The full reconcilePVC method would be better tested with integration tests
