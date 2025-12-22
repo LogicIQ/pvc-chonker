@@ -21,7 +21,7 @@ tasks:
       - minikube status -p {{.CLUSTER_NAME}} | grep Running
     cmds:
       - echo "Creating minikube cluster with CSI HostPath driver..."
-      - MINIKUBE_IN_STYLE=false minikube start -p {{.CLUSTER_NAME}} --cpus=2 --memory=4096 --disk-size=20g --driver=docker --cache-images=true --embed-certs=true --addons=csi-hostpath-driver
+      - MINIKUBE_IN_STYLE=false minikube start -p {{.CLUSTER_NAME}} --cpus=2 --memory=4096 --disk-size=20g --driver=docker --cache-images=true --embed-certs=true --addons=csi-hostpath-driver --kubernetes-version=v1.28.3
       - kubectl wait --for=condition=Ready nodes --all --timeout=120s
       - echo "Cluster created with CSI driver enabled"
 
@@ -66,10 +66,10 @@ tasks:
       - sleep 10
       - kubectl get pods -n pvc-chonker-system
       - kubectl wait --for=condition=Available deployment/controller-manager -n pvc-chonker-system --timeout=180s
-      - kubectl apply -f fixtures/test-pvc.yaml
-      - kubectl delete pod test-pod --ignore-not-found=true
-      - kubectl apply -f fixtures/test-pod.yaml
-      - kubectl wait --for=condition=Ready pod test-pod --timeout=60s
+      - kubectl apply -f fixtures/test-pvc.yaml -n pvc-chonker-system
+      - kubectl delete pod test-pod -n pvc-chonker-system --ignore-not-found=true
+      - kubectl apply -f fixtures/test-pod.yaml -n pvc-chonker-system
+      - kubectl wait --for=condition=Ready pod test-pod -n pvc-chonker-system --timeout=60s
       - echo "Operator deployed and test workload ready"
 
   test:
@@ -85,10 +85,10 @@ tasks:
     deps: [setup]
     cmds:
       - echo "Verifying kubelet volume metrics..."
-      - kubectl apply -f fixtures/test-pvc.yaml
-      - kubectl delete pod test-pod --ignore-not-found=true
-      - kubectl apply -f fixtures/test-pod.yaml
-      - kubectl wait --for=condition=Ready pod test-pod --timeout=60s
+      - kubectl apply -f fixtures/test-pvc.yaml -n pvc-chonker-system
+      - kubectl delete pod test-pod -n pvc-chonker-system --ignore-not-found=true
+      - kubectl apply -f fixtures/test-pod.yaml -n pvc-chonker-system
+      - kubectl wait --for=condition=Ready pod test-pod -n pvc-chonker-system --timeout=60s
       - sleep 10
       - kubectl get --raw /api/v1/nodes/{{.CLUSTER_NAME}}/proxy/metrics | grep kubelet_volume_stats
       - echo "Volume metrics verified"
@@ -106,13 +106,13 @@ tasks:
       - kubectl get pods -n pvc-chonker-system
       - echo ""
       - echo "=== PVC Status ==="
-      - kubectl get pvc
+      - kubectl get pvc -n pvc-chonker-system
       - echo ""
       - echo "=== Test Pod Status ==="
-      - kubectl get pod test-pod 2>/dev/null || echo "Test pod not found"
+      - kubectl get pod test-pod -n pvc-chonker-system 2>/dev/null || echo "Test pod not found"
       - echo ""
       - echo "=== Current Disk Usage ==="
-      - kubectl exec test-pod -- df -h /data 2>/dev/null || echo "Pod not ready"
+      - kubectl exec test-pod -n pvc-chonker-system -- df -h /data 2>/dev/null || echo "Pod not ready"
       - echo ""
       - echo "=== Recent Operator Logs ==="
       - kubectl logs deployment/controller-manager -n pvc-chonker-system --tail=20 --since=5m 2>/dev/null || echo "Operator not ready"
