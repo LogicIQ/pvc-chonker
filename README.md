@@ -1,44 +1,12 @@
 # pvc-chonker
 
-```
-                    /\   /\                                                    
-                   (  o o  )                                                   
-                    \  ^  /                                                    
-                     ||||                                                      
-              .ooooooooooooooooooooo.                                         
-            .ooooooooooooooooooooooooo.                                       
-          .ooooooooooooooooooooooooooooo.                                     
-         .ooooooooooooooooooooooooooooooo.                                    
-        .ooooooooooooooooooooooooooooooooo.                                   
-       .ooooooooooooooooooooooooooooooooooo.                                  
-      .ooooooooooooooooooooooooooooooooooooo.                                 
-     .ooooooooooooooooooooooooooooooooooooooo.                                
-    .ooooooooooooooooooooooooooooooooooooooooo.                               
-   .ooooooooooooooooooooooooooooooooooooooooooo.                              
-  .ooooooooooooooooooooooooooooooooooooooooooooo.                             
- .ooooooooooooooooooooooooooooooooooooooooooooooo.                            
-.ooooooooooooooooooooooooooooooooooooooooooooooooo.                           
-\ooooooooooooooooooooooooooooooooooooooooooooooooo/                           
- \ooooooooooooooooooooooooooooooooooooooooooooooo/                            
-  \ooooooooooooooooooooooooooooooooooooooooooooo/                             
-   \ooooooooooooooooooooooooooooooooooooooooooo/                              
-    \ooooooooooooooooooooooooooooooooooooooooo/                               
-     \ooooooooooooooooooooooooooooooooooooooo/                                
-      \ooooooooooooooooooooooooooooooooooooo/                                 
-       \ooooooooooooooooooooooooooooooooooo/                                  
-        \ooooooooooooooooooooooooooooooooo/                                   
-         \ooooooooooooooooooooooooooooooo/                                    
-          \ooooooooooooooooooooooooooooo/                                     
-           \ooooooooooooooooooooooooooo/                                      
-            \ooooooooooooooooooooooooo/                                       
-             '~~~~~~~~~~~~~~~~~~~~~~~'                                        
-                ||||           ||||                                           
-                ||||           ||||                                           
-```
+![PVC Chonker](https://raw.githubusercontent.com/LogicIQ/pvc-chonker/main/docs/images/pvc-chonker.webp)
 
-> ⚠️ **BETA RELEASE** - This project is feature-complete with comprehensive testing but still in beta. Production use is possible but APIs may still evolve.
+> **BETA RELEASE** - This project is feature-complete with comprehensive testing but still in beta. Production use is possible but APIs may still evolve.
 
 A cloud-agnostic Kubernetes operator for automatic PVC expansion. Works with any CSI-compatible storage without external dependencies.
+
+🌐 **[Visit Project Page](https://logiciq.ca/pvc-chonker)**
 
 ## Features
 
@@ -257,14 +225,14 @@ spec:
 
 ## Inode Support
 
-✅ **Automatic Inode Monitoring**: PVC Chonker monitors both storage and inode usage:
+**Automatic Inode Monitoring**: PVC Chonker monitors both storage and inode usage:
 
 - Triggers expansion when either storage OR inode threshold is reached
 - Works with any filesystem that exposes inode metrics via kubelet
 - Provides detailed inode usage in logs and Prometheus metrics
 - Gracefully handles volumes without inode metrics (storage-only mode)
 
-⚠️ **Filesystem Considerations**: Inode expansion effectiveness varies by filesystem:
+**Filesystem Considerations**: Inode expansion effectiveness varies by filesystem:
 
 - **ext3/ext4**: Fixed inode count at creation - expansion won't increase inodes
 - **XFS**: Dynamic inodes - expansion resolves both storage and inode pressure
