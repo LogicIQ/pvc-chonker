@@ -1,0 +1,36 @@
+apiVersion: pvc-chonker.io/v1alpha1
+kind: PVCGroup
+metadata:
+  name: elasticsearch-cluster
+  namespace: logging
+spec:
+  selector:
+    matchLabels:
+      app: elasticsearch
+      cluster: main
+  coordinationPolicy: "largest"
+  template:
+    enabled: true
+    threshold: "80%"
+    increase: "20%"
+    maxSize: "1000Gi"
+    cooldown: "20m"
+---
+apiVersion: pvc-chonker.io/v1alpha1
+kind: PVCGroup
+metadata:
+  name: mongodb-replica-set
+  namespace: database
+spec:
+  selector:
+    matchLabels:
+      app: mongodb
+      role: replica
+  coordinationPolicy: "largest"
+  template:
+    threshold: "85%"
+    inodesThreshold: "90%"
+    increase: "30%"
+    maxSize: "2000Gi"
+    minScaleUp: "100Gi"
+    cooldown: "45m"

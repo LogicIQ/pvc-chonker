@@ -1,0 +1,67 @@
+apiVersion: pvc-chonker.io/v1alpha1
+kind: PVCGroup
+metadata:
+  name: test-pvcgroup
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: test-app
+      tier: database
+  coordinationPolicy: "largest"
+  template:
+    enabled: true
+    threshold: "80%"
+    increase: "25%"
+    maxSize: "1000Gi"
+    cooldown: "30s"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc-1
+  namespace: default
+  labels:
+    app: test-app
+    tier: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc-2
+  namespace: default
+  labels:
+    app: test-app
+    tier: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 200Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc-disabled
+  namespace: default
+  labels:
+    app: test-app
+    tier: database
+  annotations:
+    pvc-chonker.io/enabled: "false"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard

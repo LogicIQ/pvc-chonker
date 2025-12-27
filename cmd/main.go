@@ -10,6 +10,7 @@ import (
 
 	"github.com/logicIQ/pvc-chonker/api/v1alpha1"
 	"github.com/logicIQ/pvc-chonker/internal/controller"
+	"github.com/logicIQ/pvc-chonker/internal/webhook"
 	"github.com/logicIQ/pvc-chonker/pkg/annotations"
 	"github.com/logicIQ/pvc-chonker/pkg/kubelet"
 
@@ -60,6 +61,9 @@ func main() {
 	rootCmd.Flags().String("log-format", "json", "Log format: json or console")
 	rootCmd.Flags().String("log-level", "info", "Log level: debug, info, warn, error")
 	rootCmd.Flags().Int("max-parallel", 4, "Maximum parallel PVC operations")
+	rootCmd.Flags().String("webhook-port", "9443", "Webhook server port")
+	rootCmd.Flags().String("webhook-cert-dir", "/tmp/k8s-webhook-server/serving-certs", "Webhook certificate directory")
+	rootCmd.Flags().Bool("enable-webhook", false, "Enable admission webhook")
 
 	// Bind viper to flags
 	viper.BindPFlags(rootCmd.Flags())
@@ -165,6 +169,26 @@ func run(cmd *cobra.Command, args []string) {
 	if err = policyController.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create PVCPolicy controller")
 		os.Exit(1)
+	}
+
+	// Setup PVCGroup controller
+	groupController := &controller.PVCGroupReconciler{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		EventRecorder: mgr.GetEventRecorderFor("pvc-chonker-group"),
+	}
+	if err = groupController.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create PVCGroup controller")
+		os.Exit(1)
+	}
+
+	// Setup PVCGroup webhook
+	if viper.GetBool("enable-webhook") {
+		if err = webhook.SetupPVCGroupWebhook(mgr); err != nil {
+			setupLog.Error(err, "unable to create PVCGroup webhook")
+			os.Exit(1)
+		}
+		setupLog.Info("PVCGroup webhook enabled")
 	}
 
 	// Add health checks

@@ -26,13 +26,26 @@ tasks:
       - echo "Cluster created with CSI driver enabled"
 
   setup:
-    desc: Setup test environment with CSI HostPath storage
+    desc: Setup test environment with CSI HostPath storage and cert-manager
     deps: [create-cluster]
     cmds:
       - echo "Setting up test environment..."
       - kubectl apply -f fixtures/storage-class.yaml
       - kubectl wait --for=condition=Ready pod -l addonmanager.kubernetes.io/mode=Reconcile -n kube-system --timeout=120s
       - echo "CSI HostPath driver ready"
+      - task: setup-cert-manager
+
+  setup-cert-manager:
+    desc: Install cert-manager for webhook TLS
+    status:
+      - kubectl get crd certificates.cert-manager.io
+    cmds:
+      - echo "Installing cert-manager..."
+      - kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+      - kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager
+      - kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-webhook -n cert-manager
+      - kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-cainjector -n cert-manager
+      - echo "Cert-manager ready"
 
   deploy:
     desc: Deploy operator to cluster
@@ -79,6 +92,77 @@ tasks:
       - go mod tidy
       - go test -v ./... -timeout=10m
       - echo "All E2E tests passed"
+
+  test-helm-certs:
+    desc: Test Helm chart certificate generation
+    cmds:
+      - echo "Testing Helm certificate generation..."
+      - |
+        helm template pvc-chonker ../helm-charts/charts/pvc-chonker \
+          --set webhook.enabled=true \
+          --set webhook.certManager=false \
+          --namespace pvc-chonker-system > /tmp/helm-output.yaml
+      - echo "Checking generated certificates..."
+      - grep -A 10 "kind: Secret" /tmp/helm-output.yaml
+      - grep "tls.crt:" /tmp/helm-output.yaml
+      - grep "tls.key:" /tmp/helm-output.yaml
+      - grep "ca.crt:" /tmp/helm-output.yaml
+      - grep "caBundle:" /tmp/helm-output.yaml
+      - echo "Certificate generation test passed"
+
+  test-webhook-certs:
+    desc: Deploy and verify webhook certificates work
+    deps: [setup]
+    cmds:
+      - echo "Deploying with webhook certificates..."
+      - |
+        helm upgrade --install pvc-chonker ../helm-charts/charts/pvc-chonker \
+          --set webhook.enabled=true \
+          --set webhook.certManager=false \
+          --namespace pvc-chonker-system \
+          --create-namespace
+      - kubectl wait --for=condition=Available deployment/pvc-chonker-controller -n pvc-chonker-system --timeout=120s
+      - echo "Verifying certificate secret exists..."
+      - kubectl get secret pvc-chonker-webhook-server-cert -n pvc-chonker-system
+      - echo "Checking certificate validity..."
+      - |
+        kubectl get secret pvc-chonker-webhook-server-cert -n pvc-chonker-system -o jsonpath='{.data.tls\.crt}' | \
+        base64 -d | openssl x509 -text -noout | grep -E "Subject:|DNS:"
+      - echo "Verifying webhook configuration has CA bundle..."
+      - kubectl get mutatingadmissionwebhook pvc-chonker-mutating-webhook-configuration -o yaml | grep caBundle
+      - echo "Webhook certificate test passed"
+
+  deploy-webhook:
+    desc: Deploy operator with webhook enabled
+    deps: [setup]
+    cmds:
+      - echo "Building and deploying operator with webhook..."
+      - cd .. && task docker:build
+      - minikube image load {{.IMG}} -p {{.CLUSTER_NAME}}
+      - kubectl apply -R -f ../config/
+      - |
+        kubectl patch deployment controller-manager -n pvc-chonker-system -p '{
+          "spec": {
+            "template": {
+              "spec": {
+                "containers": [{
+                  "name": "manager",
+                  "imagePullPolicy": "Never",
+                  "env": [{
+                    "name": "PVC_CHONKER_ENABLE_WEBHOOK",
+                    "value": "true"
+                  }, {
+                    "name": "PVC_CHONKER_WATCH_INTERVAL",
+                    "value": "5s"
+                  }]
+                }]
+              }
+            }
+          }
+        }'
+      - kubectl rollout restart deployment controller-manager -n pvc-chonker-system
+      - kubectl wait --for=condition=Available deployment/controller-manager -n pvc-chonker-system --timeout=180s
+      - echo "Operator with webhook deployed"
 
   verify-metrics:
     desc: Verify kubelet volume metrics are available

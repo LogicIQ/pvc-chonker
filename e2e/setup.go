@@ -2,12 +2,14 @@ package e2e
 
 import (
 	"context"
-	"io"
+	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -43,6 +45,23 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func getK8sClient(t *testing.T) client.Client {
+	if k8sClient == nil {
+		t.Fatal("k8sClient is not initialized")
+	}
+	return k8sClient
+}
+
+func generateRandomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+	rand.Seed(time.Now().UnixNano())
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
 }
 
 func TestMain(m *testing.M) {

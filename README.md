@@ -41,7 +41,13 @@ A cloud-agnostic Kubernetes operator for automatic PVC expansion. Works with any
 ```bash
 helm repo add logiciq https://logiciq.github.io/helm-charts
 helm repo update
+
+# Basic installation
 helm install pvc-chonker logiciq/pvc-chonker -n pvc-chonker-system --create-namespace
+
+# With PVCGroup support (webhook enabled)
+helm install pvc-chonker logiciq/pvc-chonker -n pvc-chonker-system --create-namespace \
+  --set webhook.enabled=true
 ```
 
 ### Docker
@@ -156,6 +162,52 @@ Each setting follows this precedence order:
 2. **PVCPolicy Custom Resource** (namespace-scoped policy)
 3. **Global Flag/Environment Variable** 
 4. **Built-in Default** (fallback)
+
+## PVCGroup Configuration
+
+**Webhook Required**: PVCGroups require the admission webhook to be enabled. The webhook automatically applies group template settings to matching PVCs during creation/update.
+
+For coordinated PVC expansion across related volumes, use PVCGroup custom resources:
+
+```yaml
+# Enable webhook first (required for PVCGroups)
+webhook:
+  enabled: true
+
+# Then create PVCGroup
+apiVersion: pvc-chonker.io/v1alpha1
+kind: PVCGroup
+metadata:
+  name: elasticsearch-cluster
+  namespace: logging
+spec:
+  selector:
+    matchLabels:
+      app: elasticsearch
+      cluster: main
+  coordinationPolicy: "largest"
+  template:
+    enabled: true
+    threshold: "80%"
+    increase: "20%"
+    maxSize: "1000Gi"
+    cooldown: "20m"
+```
+
+### PVCGroup Features
+
+- **Group Coordination**: Maintains consistent sizing across related PVCs
+- **Coordination Policies**: `largest`, `average`, `sum` for different sizing strategies
+- **Template Application**: Webhook automatically applies group settings to matching PVCs
+- **Override Support**: Individual PVC annotations always take precedence
+
+### Coordination Policies
+
+| Policy | Behavior | Use Case |
+|--------|----------|----------|
+| `largest` | All PVCs match the largest size in group | Default, ensures no volume is smaller |
+| `average` | All PVCs match the average size in group | Balanced approach for cost optimization |
+| `sum` | Distribute total capacity evenly across PVCs | Fixed total capacity scenarios |
 
 ## PVCPolicy Configuration
 
