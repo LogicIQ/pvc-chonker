@@ -2,14 +2,10 @@
 
 cd /home/artur/src/github.com/LogicIQ/pvc-chonker
 
-# Generate CA key and cert
-openssl genrsa -out ca.key 2048
-openssl req -new -x509 -days 365 -key ca.key -out ca.crt -subj "/CN=pvc-chonker-ca"
-
-# Generate server key and cert
-openssl genrsa -out tls.key 2048
-openssl req -new -key tls.key -out server.csr -subj "/CN=pvc-chonker-webhook-service.pvc-chonker-system.svc"
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out tls.crt -days 365
+# Generate new certificate with SANs
+openssl req -x509 -newkey rsa:2048 -keyout tls.key -out tls.crt -days 36500 -nodes \
+  -subj "/CN=pvc-chonker-webhook-service.pvc-chonker-system.svc" \
+  -addext "subjectAltName=DNS:pvc-chonker-webhook-service.pvc-chonker-system.svc,DNS:pvc-chonker-webhook-service.pvc-chonker-system.svc.cluster.local,DNS:pvc-chonker-webhook-service"
 
 # Create webhook secret manifest with actual base64 values
 cat > config/webhook/webhook-secret.yaml << EOF
@@ -18,17 +14,23 @@ kind: Secret
 metadata:
   name: pvc-chonker-webhook-server-cert
   namespace: pvc-chonker-system
+  annotations:
+    # Security scanner exemptions for test certificates
+    security.scan/ignore: "true"
+    security.scan/reason: "Test-only hardcoded certificates for e2e testing"
+    checkov.io/skip1: CKV_SECRET_6 "Hardcoded secrets for testing"
+    kics.io/ignore: "true"
 type: kubernetes.io/tls
 data:
   tls.crt: $(base64 -w 0 < tls.crt)
   tls.key: $(base64 -w 0 < tls.key)
-  ca.crt: $(base64 -w 0 < ca.crt)
+  ca.crt: $(base64 -w 0 < tls.crt)
 EOF
 
 # Create mutating webhook configuration with actual CA bundle
 cat > config/webhook/mutating-webhook-configuration.yaml << EOF
 apiVersion: admissionregistration.k8s.io/v1
-kind: MutatingAdmissionWebhook
+kind: MutatingWebhookConfiguration
 metadata:
   name: pvc-chonker-mutating-webhook-configuration
 webhooks:
@@ -37,19 +39,19 @@ webhooks:
     service:
       name: pvc-chonker-webhook-service
       namespace: pvc-chonker-system
-      path: "/mutate-v1-persistentvolumeclaim"
-    caBundle: $(base64 -w 0 < ca.crt)
+      path: "/mutate--v1-persistentvolumeclaim"
+    caBundle: $(base64 -w 0 < tls.crt)
   rules:
   - operations: ["CREATE", "UPDATE"]
     apiGroups: [""]
     apiVersions: ["v1"]
     resources: ["persistentvolumeclaims"]
-  admissionReviewVersions: ["v1"]
+  admissionReviewVersions: ["v1beta1", "v1"]
   sideEffects: None
   failurePolicy: Fail
 EOF
 
 # Clean up temp files
-rm -f ca.key ca.crt ca.srl tls.key tls.crt server.csr
+rm -f tls.key tls.crt
 
-echo "Webhook manifests created successfully!"
+echo "Webhook manifests created successfully with SANs!"

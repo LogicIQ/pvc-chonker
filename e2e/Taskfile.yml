@@ -67,6 +67,8 @@ tasks:
       - sleep 10
       - kubectl get pods -n pvc-chonker-system
       - kubectl wait --for=condition=Available deployment/controller-manager -n pvc-chonker-system --timeout=180s
+      - echo "Waiting for webhook server to be ready..."
+      - sleep 10
       - kubectl apply -f fixtures/test-pvc.yaml -n pvc-chonker-system
       - kubectl delete pod test-pod -n pvc-chonker-system --ignore-not-found=true
       - kubectl apply -f fixtures/test-pod.yaml -n pvc-chonker-system

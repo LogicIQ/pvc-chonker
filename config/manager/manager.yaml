@@ -43,6 +43,7 @@ spec:
         - /manager
         args:
         - --leader-elect
+        - --enable-webhook
         env:
         - name: NODE_IP
           valueFrom:
@@ -53,7 +54,15 @@ spec:
         - name: PVC_CHONKER_LOG_LEVEL
           value: "debug"
         image: logiciq/pvc-chonker:latest
+        imagePullPolicy: Never
         name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        - containerPort: 8081
+          name: health
+          protocol: TCP
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -78,5 +87,14 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+      volumes:
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: pvc-chonker-webhook-server-cert
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

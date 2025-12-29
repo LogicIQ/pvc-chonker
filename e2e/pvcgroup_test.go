@@ -12,9 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	pvcchonkerv1alpha1 "github.com/logicIQ/pvc-chonker/api/v1alpha1"
+	pvcchonkerv1alpha1 "github.com/LogicIQ/pvc-chonker/api/v1alpha1"
 )
 
 func TestPVCGroupCoordination(t *testing.T) {
@@ -73,7 +72,7 @@ func TestPVCGroupCoordination(t *testing.T) {
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			Resources: corev1.ResourceRequirements{
+			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: resource.MustParse("100Gi"),
 				},
@@ -94,7 +93,7 @@ func TestPVCGroupCoordination(t *testing.T) {
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			Resources: corev1.ResourceRequirements{
+			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: resource.MustParse("200Gi"),
 				},
@@ -119,7 +118,7 @@ func TestPVCGroupCoordination(t *testing.T) {
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			Resources: corev1.ResourceRequirements{
+			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: resource.MustParse("50Gi"),
 				},
@@ -224,7 +223,7 @@ func TestPVCGroupWebhook(t *testing.T) {
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			Resources: corev1.ResourceRequirements{
+			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: resource.MustParse("100Gi"),
 				},
@@ -320,7 +319,7 @@ func TestPVCGroupCoordinationPolicies(t *testing.T) {
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
 						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceStorage: resource.MustParse(size),
 							},
@@ -428,8 +427,4 @@ func TestPVCGroupWebhookE2E(t *testing.T) {
 
 func boolPtr(b bool) *bool {
 	return &b
-}
-
-func stringPtr(s string) *string {
-	return &s
 }

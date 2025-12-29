@@ -2,7 +2,7 @@
 
 ![PVC Chonker](https://raw.githubusercontent.com/LogicIQ/pvc-chonker/main/docs/images/pvc-chonker.webp)
 
-> **BETA RELEASE** - This project is feature-complete with comprehensive testing but still in beta. Production use is possible but APIs may still evolve.
+> **ALPHA RELEASE** - This project is under active development and not ready for production use. APIs may change significantly.
 
 A cloud-agnostic Kubernetes operator for automatic PVC expansion. Works with any CSI-compatible storage without external dependencies.
 
@@ -157,11 +157,57 @@ spec:
 
 ## Configuration Hierarchy
 
+## Configuration Hierarchy
+
+PVC Chonker uses a priority-based configuration system. Settings are applied in the following order (highest to lowest priority):
+
+### 1. PVC Annotations (Highest Priority)
+Direct annotations on individual PVCs always override all other settings:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+    pvc-chonker.io/threshold: "90%"  # Always takes precedence
+```
+
+### 2. PVCGroup Template (Medium-High Priority)
+When a PVC matches a PVCGroup selector, group template settings apply:
+
+```yaml
+apiVersion: pvc-chonker.io/v1alpha1
+kind: PVCGroup
+spec:
+  template:
+    threshold: "80%"  # Used if no PVC annotation exists
+```
+
+### 3. PVCPolicy Template (Medium Priority)
+Namespace-scoped policies for PVCs with matching labels:
+
+```yaml
+apiVersion: pvc-chonker.io/v1alpha1
+kind: PVCPolicy
+spec:
+  template:
+    threshold: 75.0  # Used if no annotation or group setting
+```
+
+### 4. Global Configuration (Low Priority)
+Operator-level defaults from command flags or environment variables.
+
+### 5. Built-in Defaults (Lowest Priority)
+Hardcoded fallback values: `threshold: 80%`, `increase: 10%`, `cooldown: 15m`
+
+**Important**: Only specified fields override lower priorities. Unspecified fields fall through to the next priority level.
+
 Each setting follows this precedence order:
 1. **PVC Annotation** (highest priority)
-2. **PVCPolicy Custom Resource** (namespace-scoped policy)
-3. **Global Flag/Environment Variable** 
-4. **Built-in Default** (fallback)
+2. **PVCGroup Template** (if PVC matches group selector)
+3. **PVCPolicy Template** (if PVC matches policy selector)
+4. **Global Flag/Environment Variable** 
+5. **Built-in Default** (fallback)
 
 ## PVCGroup Configuration
 
