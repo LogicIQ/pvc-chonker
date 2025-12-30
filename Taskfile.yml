@@ -104,6 +104,14 @@ tasks:
   e2e:run:
     desc: Run complete e2e test suite
     cmds:
+      - echo "Running pre-test cleanup..."
+      - kubectl delete pvc --all -n pvc-chonker-system --ignore-not-found=true --timeout=10s || echo "PVC cleanup failed but continuing..."
+      - kubectl delete pvcgroups --all -n pvc-chonker-system --ignore-not-found=true --timeout=10s || echo "PVCGroup cleanup failed but continuing..."
+      - kubectl delete pvcpolicies --all -n pvc-chonker-system --ignore-not-found=true --timeout=10s || echo "PVCPolicy cleanup failed but continuing..."
+      - kubectl delete pods --all -n pvc-chonker-system --ignore-not-found=true --timeout=10s || echo "Pod cleanup failed but continuing..."
+      - kubectl delete ns pvc-chonker-system --ignore-not-found=true --timeout=20s || echo "Namespace cleanup failed but continuing..."
+      - kubectl delete ns -l "name~=webhook.*test" --ignore-not-found=true --timeout=30s || echo "Test namespace cleanup failed but continuing..."
+      - echo "Starting e2e tests..."
       - cd e2e && task e2e
 
   e2e:test:

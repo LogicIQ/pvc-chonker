@@ -5,30 +5,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// CoordinationPolicy defines how PVCs in a group coordinate their sizes
-// +kubebuilder:validation:Enum=largest;average;sum
-type CoordinationPolicy string
-
-const (
-	// CoordinationPolicyLargest makes all PVCs match the largest size in group
-	CoordinationPolicyLargest CoordinationPolicy = "largest"
-	// CoordinationPolicyAverage makes all PVCs match the average size in group
-	CoordinationPolicyAverage CoordinationPolicy = "average"
-	// CoordinationPolicySum distributes total capacity evenly across PVCs
-	CoordinationPolicySum CoordinationPolicy = "sum"
-)
-
 // PVCGroupSpec defines the desired state of PVCGroup
 // +kubebuilder:object:generate=true
 type PVCGroupSpec struct {
-	// Selector specifies which PVCs belong to this group
-	Selector metav1.LabelSelector `json:"selector"`
-
-	// CoordinationPolicy defines how PVCs coordinate their sizes
-	// +kubebuilder:default=largest
-	// +optional
-	CoordinationPolicy CoordinationPolicy `json:"coordinationPolicy,omitempty"`
-
 	// Template defines the expansion configuration for the group
 	Template PVCGroupTemplate `json:"template"`
 }

@@ -2,6 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: test-inode-pvc
+  namespace: pvc-chonker-system
   annotations:
     pvc-chonker.io/enabled: "true"
     pvc-chonker.io/threshold: "90%"

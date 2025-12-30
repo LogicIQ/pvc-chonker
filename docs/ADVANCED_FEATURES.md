@@ -1,10 +1,10 @@
-# Advanced Features: PVCPolicy and PVCGroup
+# Advanced Features
 
-> ⚠️ **PLANNED FEATURES** - These advanced features are not yet implemented. This documentation describes the planned functionality for future releases. Currently, only annotation-based configuration is supported.
+> ⚠️ **CURRENT IMPLEMENTATION** - PVCGroup uses annotation-based membership with largest size coordination policy only.
 
 ## Overview
 
-PVC Chonker will support advanced configuration management through Custom Resource Definitions (CRDs) that complement the existing annotation-based approach. These features will provide enterprise-grade policy management and group coordination capabilities.
+PVC Chonker supports advanced configuration management through Custom Resource Definitions (CRDs) that complement the existing annotation-based approach.
 
 ## Configuration Hierarchy
 
@@ -16,7 +16,7 @@ The configuration precedence order is:
 5. **Built-in Defaults** (fallback)
 
 ### Override Annotation
-Use `pvc-chonker.io/enabled: "false"` to completely disable expansion for a PVC, regardless of any policy or group configuration. This annotation takes highest priority and will prevent any expansion from occurring.
+Use `pvc-chonker.io/enabled: "false"` to completely disable expansion for a PVC, regardless of any policy or group configuration.
 
 ## PVCPolicy Controller
 
@@ -50,66 +50,15 @@ spec:
     cooldown: "30m"
 ```
 
-### Advanced Selector Example
-```yaml
-apiVersion: pvc-chonker.io/v1alpha1
-kind: PVCPolicy
-metadata:
-  name: high-performance-policy
-spec:
-  selector:
-    matchLabels:
-      tier: production
-      performance: high
-    matchExpressions:
-    - key: app
-      operator: In
-      values: ["elasticsearch", "mongodb", "postgresql"]
-  template:
-    threshold: "75%"
-    increase: "50%"
-    maxSize: "5000Gi"
-    cooldown: "15m"
-```
-
-### PVC Integration
-PVCs automatically inherit policy settings when labels match, but annotations always take precedence:
-
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-data
-  labels:
-    workload: database  # Matches database-policy selector
-    tier: production
-  annotations:
-    # Individual annotations override policy settings
-    pvc-chonker.io/threshold: "90%"  # Overrides policy's 85%
-    pvc-chonker.io/enabled: "false"    # Disables expansion entirely
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 100Gi
-  storageClassName: fast-ssd
-```
-
 ## PVCGroup Controller
 
 ### Purpose
-Coordinate PVC expansion across related volumes to maintain consistent sizing within a group. Groups operate independently of policies - a PVC can be in a group without having a policy applied.
+Coordinate PVC expansion across related volumes to maintain consistent sizing within a group using the largest size policy.
 
 ### When to Use
 - **Clustered applications** (Elasticsearch, MongoDB replica sets)
 - **Distributed storage** requiring uniform capacity
-- **Load balancing** across multiple volumes
 - **Consistent sizing** for related workloads
-
-### Important Notes
-- **PVCPolicy settings are NOT applied to PVCGroups** - groups have their own template settings
-- **Individual PVC annotations always override group settings**
-- **Groups coordinate sizing, policies provide templates**
 
 ### Basic Example
 ```yaml
@@ -119,11 +68,6 @@ metadata:
   name: elasticsearch-cluster
   namespace: logging
 spec:
-  selector:
-    matchLabels:
-      app: elasticsearch
-      cluster: main
-  coordinationPolicy: "largest"
   template:
     threshold: "80%"
     increase: "20%"
@@ -131,59 +75,34 @@ spec:
     cooldown: "20m"
 ```
 
-### Coordination Policies
+### PVC Membership
+PVCs join groups via annotations:
 
-| Policy | Behavior | Use Case |
-|--------|----------|----------|
-| `largest` | All PVCs match the largest size in group | Default, ensures no volume is smaller |
-| `average` | All PVCs match the average size in group | Balanced approach for cost optimization |
-| `sum` | Distribute total capacity evenly across PVCs | Fixed total capacity scenarios |
-
-### Advanced Group Example
-```yaml
-apiVersion: pvc-chonker.io/v1alpha1
-kind: PVCGroup
-metadata:
-  name: mongodb-replica-set
-spec:
-  selector:
-    matchLabels:
-      app: mongodb
-      role: replica
-  coordinationPolicy: "largest"
-  template:
-    # Group-specific settings (independent of any PVCPolicy)
-    threshold: "85%"
-    inodesThreshold: "90%"
-    increase: "30%"
-    maxSize: "2000Gi"
-    minScaleUp: "100Gi"
-    cooldown: "45m"
-  status:
-    currentSize: "500Gi"
-    lastExpansion: "2024-01-15T10:30:00Z"
-    memberCount: 3
-```
-
-### PVC with Group Override
 ```yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: mongodb-data-1
-  labels:
-    app: mongodb
-    role: replica  # Matches group selector
+  name: elasticsearch-data-0
   annotations:
-    # This PVC gets different threshold despite being in group
-    pvc-chonker.io/threshold: "95%"  # Overrides group's 85%
-    pvc-chonker.io/enabled: "false"    # Skips expansion entirely
+    pvc-chonker.io/group: elasticsearch-cluster
+    pvc-chonker.io/enabled: "true"
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 500Gi
+      storage: 100Gi
 ```
+
+### Coordination Behavior
+
+PVCGroups use **largest size policy** - all PVCs in the group match the size of the largest PVC:
+
+**Example**: If PVCs are 100Gi, 150Gi, 120Gi → all become 150Gi
+
+This ensures:
+- No volume ever gets smaller
+- Consistent sizing across related volumes
+- Safe, predictable behavior
 
 ## Annotations vs CRDs Comparison
 

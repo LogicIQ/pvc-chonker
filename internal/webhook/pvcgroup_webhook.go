@@ -8,8 +8,6 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,6 +32,12 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 		return admission.Allowed("not a PVC")
 	}
 
+	// Check if decoder is initialized
+	if m.decoder == nil {
+		logger.Error(nil, "Decoder not initialized")
+		return admission.Errored(http.StatusInternalServerError, fmt.Errorf("decoder not initialized"))
+	}
+
 	pvc := &corev1.PersistentVolumeClaim{}
 	if err := (*m.decoder).Decode(req, pvc); err != nil {
 		logger.Error(err, "Failed to decode PVC")
@@ -45,29 +49,23 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 		return admission.Allowed("PVC expansion disabled")
 	}
 
-	// Find matching PVCGroups
-	var pvcGroupList pvcchonkerv1alpha1.PVCGroupList
-	if err := m.Client.List(ctx, &pvcGroupList, &client.ListOptions{
+	// Check if PVC has a group annotation
+	groupName, hasGroup := pvc.Annotations["pvc-chonker.io/group"]
+	if !hasGroup {
+		return admission.Allowed("no group annotation")
+	}
+
+	// Find the specified PVCGroup
+	var pvcGroup pvcchonkerv1alpha1.PVCGroup
+	if err := m.Client.Get(ctx, client.ObjectKey{
+		Name:      groupName,
 		Namespace: pvc.Namespace,
-	}); err != nil {
-		logger.Error(err, "Failed to list PVCGroups")
+	}, &pvcGroup); err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			return admission.Allowed("PVCGroup not found")
+		}
+		logger.Error(err, "Failed to get PVCGroup", "group", groupName)
 		return admission.Errored(http.StatusInternalServerError, err)
-	}
-
-	var matchingGroup *pvcchonkerv1alpha1.PVCGroup
-	for _, group := range pvcGroupList.Items {
-		selector, err := metav1.LabelSelectorAsSelector(&group.Spec.Selector)
-		if err != nil {
-			continue
-		}
-		if selector.Matches(labels.Set(pvc.Labels)) {
-			matchingGroup = &group
-			break
-		}
-	}
-
-	if matchingGroup == nil {
-		return admission.Allowed("no matching PVCGroup")
 	}
 
 	// Apply group template settings as annotations if not already present
@@ -81,27 +79,10 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 		})
 	}
 
-	template := matchingGroup.Spec.Template
+	template := pvcGroup.Spec.Template
 
-	// Add group-based annotations only if not already set
-	if _, exists := pvc.Annotations["pvc-chonker.io/group"]; !exists {
-		patches = append(patches, map[string]interface{}{
-			"op":    "add",
-			"path":  "/metadata/annotations/pvc-chonker.io~1group",
-			"value": matchingGroup.Name,
-		})
-	}
-
-	if template.Enabled != nil {
-		if _, exists := pvc.Annotations["pvc-chonker.io/enabled"]; !exists {
-			patches = append(patches, map[string]interface{}{
-				"op":    "add",
-				"path":  "/metadata/annotations/pvc-chonker.io~1enabled",
-				"value": fmt.Sprintf("%t", *template.Enabled),
-			})
-		}
-	}
-
+	// Always add template annotations if they are specified in the template
+	// This ensures PVCs get the group's configuration
 	if template.Threshold != nil {
 		if _, exists := pvc.Annotations["pvc-chonker.io/threshold"]; !exists {
 			patches = append(patches, map[string]interface{}{
@@ -152,7 +133,7 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 
-	logger.Info("Applied PVCGroup template to PVC", "pvc", pvc.Name, "group", matchingGroup.Name, "patches", len(patches))
+	logger.Info("Applied PVCGroup template to PVC", "pvc", pvc.Name, "group", groupName, "patches", len(patches))
 
 	return admission.Response{
 		AdmissionResponse: admissionv1.AdmissionResponse{
@@ -169,8 +150,48 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 
 // Default implements the admission.CustomDefaulter interface
 func (m *PVCGroupMutator) Default(ctx context.Context, obj runtime.Object) error {
-	// This method is required by the CustomDefaulter interface but we handle
-	// mutations in the Handle method instead
+	logger := log.FromContext(ctx)
+	pvc, ok := obj.(*corev1.PersistentVolumeClaim)
+	if !ok {
+		return nil
+	}
+
+	// Check if PVC has a group annotation
+	groupName, hasGroup := pvc.Annotations["pvc-chonker.io/group"]
+	if !hasGroup {
+		return nil
+	}
+
+	// Find the specified PVCGroup
+	var pvcGroup pvcchonkerv1alpha1.PVCGroup
+	if err := m.Client.Get(ctx, client.ObjectKey{
+		Name:      groupName,
+		Namespace: pvc.Namespace,
+	}, &pvcGroup); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+
+	// Apply group template settings as annotations if not already present
+	if pvc.Annotations == nil {
+		pvc.Annotations = make(map[string]string)
+	}
+
+	template := pvcGroup.Spec.Template
+
+	// Apply template annotations if they don't exist
+	if template.Threshold != nil {
+		if _, exists := pvc.Annotations["pvc-chonker.io/threshold"]; !exists {
+			pvc.Annotations["pvc-chonker.io/threshold"] = *template.Threshold
+		}
+	}
+
+	if template.Increase != nil {
+		if _, exists := pvc.Annotations["pvc-chonker.io/increase"]; !exists {
+			pvc.Annotations["pvc-chonker.io/increase"] = *template.Increase
+		}
+	}
+
+	logger.Info("Applied PVCGroup template to PVC", "pvc", pvc.Name, "group", groupName)
 	return nil
 }
 
@@ -182,12 +203,8 @@ func (m *PVCGroupMutator) InjectDecoder(d *admission.Decoder) error {
 
 // SetupWebhookWithManager sets up the webhook with the manager
 func SetupPVCGroupWebhook(mgr ctrl.Manager) error {
-	mutator := &PVCGroupMutator{
-		Client: mgr.GetClient(),
-	}
-
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(&corev1.PersistentVolumeClaim{}).
-		WithDefaulter(mutator).
+		WithDefaulter(&PVCGroupMutator{Client: mgr.GetClient()}).
 		Complete()
 }

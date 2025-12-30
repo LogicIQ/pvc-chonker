@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -20,6 +21,8 @@ type PVCPolicyReconciler struct {
 	client.Client
 	Scheme        *runtime.Scheme
 	EventRecorder record.EventRecorder
+	// Mutex to prevent concurrent status updates for the same PVCPolicy
+	statusLocks sync.Map // map[string]*sync.Mutex
 }
 
 //+kubebuilder:rbac:groups=pvc-chonker.io,resources=pvcpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -28,6 +31,15 @@ type PVCPolicyReconciler struct {
 
 func (r *PVCPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
+
+	// Get or create a mutex for this specific PVCPolicy
+	lockKey := req.NamespacedName.String()
+	mutexInterface, _ := r.statusLocks.LoadOrStore(lockKey, &sync.Mutex{})
+	mutex := mutexInterface.(*sync.Mutex)
+
+	// Lock to prevent concurrent reconciliation of the same PVCPolicy
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	var policy pvcchonkerv1alpha1.PVCPolicy
 	if err := r.Get(ctx, req.NamespacedName, &policy); err != nil {

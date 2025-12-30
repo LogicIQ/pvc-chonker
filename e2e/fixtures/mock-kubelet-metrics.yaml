@@ -7,28 +7,28 @@ data:
   metrics: |
     # HELP kubelet_volume_stats_capacity_bytes [ALPHA] Capacity in bytes of the volume
     # TYPE kubelet_volume_stats_capacity_bytes gauge
-    kubelet_volume_stats_capacity_bytes{namespace="default",persistentvolumeclaim="test-pvc"} 1073741824
-    kubelet_volume_stats_capacity_bytes{namespace="default",persistentvolumeclaim="test-inode-pvc"} 1073741824
-    kubelet_volume_stats_capacity_bytes{namespace="default",persistentvolumeclaim="test-max-size-pvc"} 1073741824
-    kubelet_volume_stats_capacity_bytes{namespace="default",persistentvolumeclaim="test-cooldown-pvc"} 1073741824
+    kubelet_volume_stats_capacity_bytes{namespace="pvc-chonker-system",persistentvolumeclaim="test-pvc"} 1073741824
+    kubelet_volume_stats_capacity_bytes{namespace="pvc-chonker-system",persistentvolumeclaim="test-inode-pvc"} 1073741824
+    kubelet_volume_stats_capacity_bytes{namespace="pvc-chonker-system",persistentvolumeclaim="test-max-size-pvc"} 1073741824
+    kubelet_volume_stats_capacity_bytes{namespace="pvc-chonker-system",persistentvolumeclaim="test-cooldown-pvc"} 1073741824
     # HELP kubelet_volume_stats_available_bytes [ALPHA] Number of available bytes in the volume
     # TYPE kubelet_volume_stats_available_bytes gauge
-    kubelet_volume_stats_available_bytes{namespace="default",persistentvolumeclaim="test-pvc"} 858993459
-    kubelet_volume_stats_available_bytes{namespace="default",persistentvolumeclaim="test-inode-pvc"} 966367641
-    kubelet_volume_stats_available_bytes{namespace="default",persistentvolumeclaim="test-max-size-pvc"} 912680550
-    kubelet_volume_stats_available_bytes{namespace="default",persistentvolumeclaim="test-cooldown-pvc"} 912680550
+    kubelet_volume_stats_available_bytes{namespace="pvc-chonker-system",persistentvolumeclaim="test-pvc"} 858993459
+    kubelet_volume_stats_available_bytes{namespace="pvc-chonker-system",persistentvolumeclaim="test-inode-pvc"} 966367641
+    kubelet_volume_stats_available_bytes{namespace="pvc-chonker-system",persistentvolumeclaim="test-max-size-pvc"} 912680550
+    kubelet_volume_stats_available_bytes{namespace="pvc-chonker-system",persistentvolumeclaim="test-cooldown-pvc"} 912680550
     # HELP kubelet_volume_stats_inodes [ALPHA] Maximum number of inodes in the volume
     # TYPE kubelet_volume_stats_inodes gauge
-    kubelet_volume_stats_inodes{namespace="default",persistentvolumeclaim="test-pvc"} 65536
-    kubelet_volume_stats_inodes{namespace="default",persistentvolumeclaim="test-inode-pvc"} 65536
-    kubelet_volume_stats_inodes{namespace="default",persistentvolumeclaim="test-max-size-pvc"} 65536
-    kubelet_volume_stats_inodes{namespace="default",persistentvolumeclaim="test-cooldown-pvc"} 65536
+    kubelet_volume_stats_inodes{namespace="pvc-chonker-system",persistentvolumeclaim="test-pvc"} 65536
+    kubelet_volume_stats_inodes{namespace="pvc-chonker-system",persistentvolumeclaim="test-inode-pvc"} 65536
+    kubelet_volume_stats_inodes{namespace="pvc-chonker-system",persistentvolumeclaim="test-max-size-pvc"} 65536
+    kubelet_volume_stats_inodes{namespace="pvc-chonker-system",persistentvolumeclaim="test-cooldown-pvc"} 65536
     # HELP kubelet_volume_stats_inodes_used [ALPHA] Number of used inodes in the volume
     # TYPE kubelet_volume_stats_inodes_used gauge
-    kubelet_volume_stats_inodes_used{namespace="default",persistentvolumeclaim="test-pvc"} 13107
-    kubelet_volume_stats_inodes_used{namespace="default",persistentvolumeclaim="test-inode-pvc"} 13107
-    kubelet_volume_stats_inodes_used{namespace="default",persistentvolumeclaim="test-max-size-pvc"} 6553
-    kubelet_volume_stats_inodes_used{namespace="default",persistentvolumeclaim="test-cooldown-pvc"} 6553
+    kubelet_volume_stats_inodes_used{namespace="pvc-chonker-system",persistentvolumeclaim="test-pvc"} 13107
+    kubelet_volume_stats_inodes_used{namespace="pvc-chonker-system",persistentvolumeclaim="test-inode-pvc"} 13107
+    kubelet_volume_stats_inodes_used{namespace="pvc-chonker-system",persistentvolumeclaim="test-max-size-pvc"} 6553
+    kubelet_volume_stats_inodes_used{namespace="pvc-chonker-system",persistentvolumeclaim="test-cooldown-pvc"} 6553
 ---
 apiVersion: apps/v1
 kind: DaemonSet

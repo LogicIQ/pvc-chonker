@@ -4,17 +4,50 @@ metadata:
   name: elasticsearch-cluster
   namespace: logging
 spec:
-  selector:
-    matchLabels:
-      app: elasticsearch
-      cluster: main
-  coordinationPolicy: "largest"
   template:
-    enabled: true
     threshold: "80%"
     increase: "20%"
     maxSize: "1000Gi"
     cooldown: "20m"
+---
+# Example PVCs that join the group via annotations
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-data-0
+  namespace: logging
+  labels:
+    app: elasticsearch
+    cluster: main
+    node: "0"
+  annotations:
+    pvc-chonker.io/group: elasticsearch-cluster
+    pvc-chonker.io/enabled: "true"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-data-1
+  namespace: logging
+  labels:
+    app: elasticsearch
+    cluster: main
+    node: "1"
+  annotations:
+    pvc-chonker.io/group: elasticsearch-cluster
+    pvc-chonker.io/enabled: "true"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 150Gi  # Different initial size - will be coordinated to largest
+  storageClassName: fast-ssd
 ---
 apiVersion: pvc-chonker.io/v1alpha1
 kind: PVCGroup
@@ -22,11 +55,6 @@ metadata:
   name: mongodb-replica-set
   namespace: database
 spec:
-  selector:
-    matchLabels:
-      app: mongodb
-      role: replica
-  coordinationPolicy: "largest"
   template:
     threshold: "85%"
     inodesThreshold: "90%"
@@ -34,3 +62,58 @@ spec:
     maxSize: "2000Gi"
     minScaleUp: "100Gi"
     cooldown: "45m"
+---
+# MongoDB replica PVCs
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-primary
+  namespace: database
+  labels:
+    app: mongodb
+    role: primary
+  annotations:
+    pvc-chonker.io/group: mongodb-replica-set
+    pvc-chonker.io/enabled: "true"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 200Gi
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-secondary-0
+  namespace: database
+  labels:
+    app: mongodb
+    role: secondary
+  annotations:
+    pvc-chonker.io/group: mongodb-replica-set
+    pvc-chonker.io/enabled: "true"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 180Gi  # Will be coordinated to match primary (200Gi)
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-secondary-1
+  namespace: database
+  labels:
+    app: mongodb
+    role: secondary
+  annotations:
+    pvc-chonker.io/group: mongodb-replica-set
+    pvc-chonker.io/enabled: "true"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 190Gi  # Will be coordinated to match primary (200Gi)
+  storageClassName: fast-ssd

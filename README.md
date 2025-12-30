@@ -211,49 +211,47 @@ Each setting follows this precedence order:
 
 ## PVCGroup Configuration
 
-**Webhook Required**: PVCGroups require the admission webhook to be enabled. The webhook automatically applies group template settings to matching PVCs during creation/update.
+**Explicit Membership**: PVCs must have both `pvc-chonker.io/group=<group-name>` and `pvc-chonker.io/enabled="true"` annotations to be managed by a PVCGroup.
+
+```bash
+# Add PVCs to a group
+kubectl annotate pvc my-pvc-1 pvc-chonker.io/group=my-group pvc-chonker.io/enabled=true
+kubectl annotate pvc my-pvc-2 pvc-chonker.io/group=my-group pvc-chonker.io/enabled=true
+
+# Or use label selectors to annotate multiple PVCs
+kubectl annotate pvc -l app=elasticsearch pvc-chonker.io/group=elasticsearch-cluster pvc-chonker.io/enabled=true
+```
 
 For coordinated PVC expansion across related volumes, use PVCGroup custom resources:
 
 ```yaml
-# Enable webhook first (required for PVCGroups)
-webhook:
-  enabled: true
-
-# Then create PVCGroup
+# 1. Create PVCGroup
 apiVersion: pvc-chonker.io/v1alpha1
 kind: PVCGroup
 metadata:
   name: elasticsearch-cluster
   namespace: logging
 spec:
-  selector:
-    matchLabels:
-      app: elasticsearch
-      cluster: main
-  coordinationPolicy: "largest"
   template:
-    enabled: true
     threshold: "80%"
     increase: "20%"
     maxSize: "1000Gi"
     cooldown: "20m"
 ```
 
+```bash
+# 2. Annotate PVCs to join the group
+kubectl annotate pvc -l app=elasticsearch \
+  pvc-chonker.io/group=elasticsearch-cluster \
+  pvc-chonker.io/enabled=true -n logging
+```
+
 ### PVCGroup Features
 
-- **Group Coordination**: Maintains consistent sizing across related PVCs
-- **Coordination Policies**: `largest`, `average`, `sum` for different sizing strategies
+- **Group Coordination**: Maintains consistent sizing across related PVCs using largest size policy
 - **Template Application**: Webhook automatically applies group settings to matching PVCs
 - **Override Support**: Individual PVC annotations always take precedence
-
-### Coordination Policies
-
-| Policy | Behavior | Use Case |
-|--------|----------|----------|
-| `largest` | All PVCs match the largest size in group | Default, ensures no volume is smaller |
-| `average` | All PVCs match the average size in group | Balanced approach for cost optimization |
-| `sum` | Distribute total capacity evenly across PVCs | Fixed total capacity scenarios |
+- **Explicit Membership**: PVCs must have both `pvc-chonker.io/group` and `pvc-chonker.io/enabled=true` annotations
 
 ## PVCPolicy Configuration
 

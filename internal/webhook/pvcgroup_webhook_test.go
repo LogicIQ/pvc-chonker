@@ -31,12 +31,14 @@ func TestPVCGroupMutator_Handle(t *testing.T) {
 		expectedKeys []string
 	}{
 		{
-			name: "PVC matches group selector",
+			name: "PVC with group annotation gets template applied",
 			pvc: &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pvc",
 					Namespace: "default",
-					Labels:    map[string]string{"app": "test"},
+					Annotations: map[string]string{
+						"pvc-chonker.io/group": "test-group",
+					},
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
 					Resources: corev1.VolumeResourceRequirements{
@@ -53,9 +55,6 @@ func TestPVCGroupMutator_Handle(t *testing.T) {
 						Namespace: "default",
 					},
 					Spec: pvcchonkerv1alpha1.PVCGroupSpec{
-						Selector: metav1.LabelSelector{
-							MatchLabels: map[string]string{"app": "test"},
-						},
 						Template: pvcchonkerv1alpha1.PVCGroupTemplate{
 							Enabled:   boolPtr(true),
 							Threshold: stringPtr("80%"),
@@ -66,7 +65,6 @@ func TestPVCGroupMutator_Handle(t *testing.T) {
 			},
 			expectPatch: true,
 			expectedKeys: []string{
-				"pvc-chonker.io/group",
 				"pvc-chonker.io/enabled",
 				"pvc-chonker.io/threshold",
 				"pvc-chonker.io/increase",
@@ -78,9 +76,9 @@ func TestPVCGroupMutator_Handle(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pvc",
 					Namespace: "default",
-					Labels:    map[string]string{"app": "test"},
 					Annotations: map[string]string{
-						"pvc-chonker.io/threshold": "90%",
+						"pvc-chonker.io/group":     "test-group",
+						"pvc-chonker.io/threshold": "90%", // Should not be overridden
 					},
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
@@ -98,20 +96,16 @@ func TestPVCGroupMutator_Handle(t *testing.T) {
 						Namespace: "default",
 					},
 					Spec: pvcchonkerv1alpha1.PVCGroupSpec{
-						Selector: metav1.LabelSelector{
-							MatchLabels: map[string]string{"app": "test"},
-						},
 						Template: pvcchonkerv1alpha1.PVCGroupTemplate{
 							Enabled:   boolPtr(true),
-							Threshold: stringPtr("80%"),
+							Threshold: stringPtr("80%"), // Should be ignored
 						},
 					},
 				},
 			},
 			expectPatch: true,
 			expectedKeys: []string{
-				"pvc-chonker.io/group",
-				"pvc-chonker.io/enabled",
+				"pvc-chonker.io/enabled", // Only this should be added
 			},
 		},
 		{
@@ -120,9 +114,9 @@ func TestPVCGroupMutator_Handle(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pvc",
 					Namespace: "default",
-					Labels:    map[string]string{"app": "test"},
 					Annotations: map[string]string{
 						"pvc-chonker.io/enabled": "false",
+						"pvc-chonker.io/group":   "test-group",
 					},
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
@@ -140,24 +134,21 @@ func TestPVCGroupMutator_Handle(t *testing.T) {
 						Namespace: "default",
 					},
 					Spec: pvcchonkerv1alpha1.PVCGroupSpec{
-						Selector: metav1.LabelSelector{
-							MatchLabels: map[string]string{"app": "test"},
-						},
 						Template: pvcchonkerv1alpha1.PVCGroupTemplate{
 							Threshold: stringPtr("80%"),
 						},
 					},
 				},
 			},
-			expectPatch: false,
+			expectPatch: false, // Should be skipped due to enabled=false
 		},
 		{
-			name: "No matching group",
+			name: "PVC without group annotation",
 			pvc: &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pvc",
 					Namespace: "default",
-					Labels:    map[string]string{"app": "other"},
+					Labels:    map[string]string{"app": "test"},
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
 					Resources: corev1.VolumeResourceRequirements{
@@ -174,16 +165,46 @@ func TestPVCGroupMutator_Handle(t *testing.T) {
 						Namespace: "default",
 					},
 					Spec: pvcchonkerv1alpha1.PVCGroupSpec{
-						Selector: metav1.LabelSelector{
-							MatchLabels: map[string]string{"app": "test"},
-						},
 						Template: pvcchonkerv1alpha1.PVCGroupTemplate{
 							Threshold: stringPtr("80%"),
 						},
 					},
 				},
 			},
-			expectPatch: false,
+			expectPatch: false, // No group annotation, so no processing
+		},
+		{
+			name: "PVC with non-existent group",
+			pvc: &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pvc",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"pvc-chonker.io/group": "non-existent-group",
+					},
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse("100Gi"),
+						},
+					},
+				},
+			},
+			pvcGroups: []pvcchonkerv1alpha1.PVCGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-group",
+						Namespace: "default",
+					},
+					Spec: pvcchonkerv1alpha1.PVCGroupSpec{
+						Template: pvcchonkerv1alpha1.PVCGroupTemplate{
+							Threshold: stringPtr("80%"),
+						},
+					},
+				},
+			},
+			expectPatch: false, // Group doesn't exist
 		},
 	}
 

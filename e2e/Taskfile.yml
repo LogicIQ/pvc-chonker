@@ -55,8 +55,11 @@ tasks:
                   "name": "manager",
                   "imagePullPolicy": "Never",
                   "env": [{
+                    "name": "PVC_CHONKER_ENABLE_WEBHOOK",
+                    "value": "true"
+                  }, {
                     "name": "PVC_CHONKER_WATCH_INTERVAL",
-                    "value": "5s"
+                    "value": "15s"
                   }]
                 }]
               }

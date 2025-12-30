@@ -1,6 +1,7 @@
 # Temporary files
 .tmp/
 tmp_release*
+/tmp/
 
 # Binaries for programs and plugins
 *.exe
@@ -46,3 +47,21 @@ kubeconfig
 # Build artifacts
 bin/
 dist/
+
+# Certificate files
+*.crt
+*.key
+*.pem
+*.csr
+*.srl
+ca.*
+tls.*
+
+# Debug and log files
+*.log
+debug/
+pvc-chonker-debug/
+
+# E2E test artifacts
+e2e/test-results/
+e2e/coverage/

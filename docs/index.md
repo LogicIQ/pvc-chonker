@@ -106,7 +106,7 @@ spec:
 ```
 
 ### 2. PVCGroup Template (Medium-High Priority)
-When a PVC matches a PVCGroup selector, group template settings apply:
+When a PVC has a group annotation, group template settings apply:
 
 ```yaml
 apiVersion: pvc-chonker.io/v1alpha1
@@ -114,13 +114,19 @@ kind: PVCGroup
 metadata:
   name: database-group
 spec:
-  selector:
-    matchLabels:
-      app: database
   template:
-    enabled: true
     threshold: "80%"    # Applied if no PVC annotation
     increase: "25%"     # Applied if no PVC annotation
+```
+
+PVCs join the group via annotations:
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+    pvc-chonker.io/group: database-group
+    pvc-chonker.io/enabled: "true"
 ```
 
 ### 3. PVCPolicy Template (Medium Priority)
@@ -221,10 +227,17 @@ kind: PVCGroup
 metadata:
   name: elasticsearch-cluster
 spec:
-  selector:
-    matchLabels:
-      app: elasticsearch
-  coordinationPolicy: "largest"
+  template:
+    threshold: "80%"
+    increase: "20%"
+    maxSize: "1000Gi"
+```
+
+PVCs join via annotations:
+```bash
+kubectl annotate pvc my-pvc \
+  pvc-chonker.io/group=elasticsearch-cluster \
+  pvc-chonker.io/enabled=true
 ```
 
 ## Getting Started

@@ -38,10 +38,6 @@ func TestPVCGroupReconciler_Reconcile(t *testing.T) {
 					Namespace: "default",
 				},
 				Spec: pvcchonkerv1alpha1.PVCGroupSpec{
-					Selector: metav1.LabelSelector{
-						MatchLabels: map[string]string{"app": "test"},
-					},
-					CoordinationPolicy: pvcchonkerv1alpha1.CoordinationPolicyLargest,
 					Template: pvcchonkerv1alpha1.PVCGroupTemplate{
 						Threshold: stringPtr("80%"),
 					},
@@ -52,7 +48,10 @@ func TestPVCGroupReconciler_Reconcile(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pvc-1",
 						Namespace: "default",
-						Labels:    map[string]string{"app": "test"},
+						Annotations: map[string]string{
+							"pvc-chonker.io/group":   "test-group",
+							"pvc-chonker.io/enabled": "true",
+						},
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
 						Resources: corev1.VolumeResourceRequirements{
@@ -66,7 +65,10 @@ func TestPVCGroupReconciler_Reconcile(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pvc-2",
 						Namespace: "default",
-						Labels:    map[string]string{"app": "test"},
+						Annotations: map[string]string{
+							"pvc-chonker.io/group":   "test-group",
+							"pvc-chonker.io/enabled": "true",
+						},
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
 						Resources: corev1.VolumeResourceRequirements{
@@ -90,10 +92,6 @@ func TestPVCGroupReconciler_Reconcile(t *testing.T) {
 					Namespace: "default",
 				},
 				Spec: pvcchonkerv1alpha1.PVCGroupSpec{
-					Selector: metav1.LabelSelector{
-						MatchLabels: map[string]string{"app": "test"},
-					},
-					CoordinationPolicy: pvcchonkerv1alpha1.CoordinationPolicyLargest,
 					Template: pvcchonkerv1alpha1.PVCGroupTemplate{
 						Threshold: stringPtr("80%"),
 					},
@@ -104,7 +102,10 @@ func TestPVCGroupReconciler_Reconcile(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pvc-1",
 						Namespace: "default",
-						Labels:    map[string]string{"app": "test"},
+						Annotations: map[string]string{
+							"pvc-chonker.io/group":   "test-group",
+							"pvc-chonker.io/enabled": "true",
+						},
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
 						Resources: corev1.VolumeResourceRequirements{
@@ -118,8 +119,8 @@ func TestPVCGroupReconciler_Reconcile(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pvc-2",
 						Namespace: "default",
-						Labels:    map[string]string{"app": "test"},
 						Annotations: map[string]string{
+							"pvc-chonker.io/group":   "test-group",
 							"pvc-chonker.io/enabled": "false",
 						},
 					},
@@ -181,7 +182,7 @@ func TestPVCGroupReconciler_Reconcile(t *testing.T) {
 	}
 }
 
-func TestPVCGroupReconciler_calculateCoordinatedSize(t *testing.T) {
+func TestPVCGroupReconciler_calculateLargestSize(t *testing.T) {
 	reconciler := &PVCGroupReconciler{}
 
 	pvcs := []corev1.PersistentVolumeClaim{
@@ -214,35 +215,9 @@ func TestPVCGroupReconciler_calculateCoordinatedSize(t *testing.T) {
 		},
 	}
 
-	tests := []struct {
-		name     string
-		policy   pvcchonkerv1alpha1.CoordinationPolicy
-		expected string
-	}{
-		{
-			name:     "largest policy",
-			policy:   pvcchonkerv1alpha1.CoordinationPolicyLargest,
-			expected: "200Gi",
-		},
-		{
-			name:     "average policy",
-			policy:   pvcchonkerv1alpha1.CoordinationPolicyAverage,
-			expected: "150Gi",
-		},
-		{
-			name:     "sum policy",
-			policy:   pvcchonkerv1alpha1.CoordinationPolicySum,
-			expected: "150Gi",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := reconciler.calculateCoordinatedSize(pvcs, tt.policy)
-			expected := resource.MustParse(tt.expected)
-			assert.True(t, expected.Equal(result), "expected %s, got %s", expected.String(), result.String())
-		})
-	}
+	result := reconciler.calculateLargestSize(pvcs)
+	expected := resource.MustParse("200Gi")
+	assert.True(t, expected.Equal(result), "expected %s, got %s", expected.String(), result.String())
 }
 
 func TestPVCGroupReconciler_coordinatePVCSizes(t *testing.T) {

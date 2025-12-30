@@ -53,10 +53,17 @@ kind: PVCGroup
 metadata:
   name: cluster-storage
 spec:
-  selector:
-    matchLabels:
-      app: elasticsearch
-  coordinationPolicy: "largest"
+  template:
+    threshold: "80%"
+    increase: "20%"
+    maxSize: "1000Gi"
+```
+
+PVCs join via annotations:
+```bash
+kubectl annotate pvc my-pvc \
+  pvc-chonker.io/group=cluster-storage \
+  pvc-chonker.io/enabled=true
 ```
 
 ## Common Scenarios

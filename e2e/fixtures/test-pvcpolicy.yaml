@@ -2,15 +2,15 @@ apiVersion: pvc-chonker.io/v1alpha1
 kind: PVCPolicy
 metadata:
   name: test-policy
-  namespace: default
+  namespace: pvc-chonker-system
 spec:
   selector:
     matchLabels:
       test-policy: enabled
   template:
     enabled: true
-    threshold: 85.0
-    inodesThreshold: 90.0
+    threshold: "85%"
+    inodesThreshold: "90%"
     increase: "25%"
     maxSize: "10Gi"
     minScaleUp: "1Gi"

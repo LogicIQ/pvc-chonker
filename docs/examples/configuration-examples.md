@@ -36,20 +36,14 @@ spec:
 Coordinated expansion across replica set members:
 
 ```yaml
-# PVCGroup for coordination
+# PVCGroup for coordination (largest size policy)
 apiVersion: pvc-chonker.io/v1alpha1
 kind: PVCGroup
 metadata:
   name: mongodb-replica-set
   namespace: database
 spec:
-  selector:
-    matchLabels:
-      app: mongodb
-      cluster: main
-  coordinationPolicy: "largest"  # All replicas match largest member
   template:
-    enabled: true
     threshold: "80%"
     increase: "30%"
     maxSize: "2000Gi"
@@ -64,6 +58,9 @@ metadata:
     app: mongodb
     cluster: main
     replica: "0"
+  annotations:
+    pvc-chonker.io/group: mongodb-replica-set
+    pvc-chonker.io/enabled: "true"
 spec:
   accessModes: [ReadWriteOnce]
   resources:
@@ -79,11 +76,14 @@ metadata:
     app: mongodb
     cluster: main
     replica: "1"
+  annotations:
+    pvc-chonker.io/group: mongodb-replica-set
+    pvc-chonker.io/enabled: "true"
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: 200Gi
+      storage: 180Gi  # Will be coordinated to 200Gi (largest)
   storageClassName: fast-ssd
 ```
 
@@ -178,13 +178,7 @@ metadata:
   name: elasticsearch-data
   namespace: logging
 spec:
-  selector:
-    matchLabels:
-      app: elasticsearch
-      role: data
-  coordinationPolicy: "average"  # Balanced sizing
   template:
-    enabled: true
     threshold: "75%"
     increase: "25%"
     maxSize: "3000Gi"
@@ -199,11 +193,32 @@ metadata:
     app: elasticsearch
     role: data
     node: "0"
+  annotations:
+    pvc-chonker.io/group: elasticsearch-data
+    pvc-chonker.io/enabled: "true"
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
       storage: 500Gi
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-data-1
+  labels:
+    app: elasticsearch
+    role: data
+    node: "1"
+  annotations:
+    pvc-chonker.io/group: elasticsearch-data
+    pvc-chonker.io/enabled: "true"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 450Gi  # Will be coordinated to 500Gi (largest)
   storageClassName: fast-ssd
 ```
 
@@ -226,8 +241,8 @@ spec:
       tier: tenant
   template:
     enabled: true
-    threshold: 80.0
-    inodesThreshold: 85.0
+    threshold: "80%"
+    inodesThreshold: "85%"
     increase: "25%"
     maxSize: "1000Gi"
     minScaleUp: "10Gi"
@@ -284,7 +299,7 @@ spec:
       environment: production
   template:
     enabled: true
-    threshold: 85.0
+    threshold: "85%"
     increase: "25%"
     maxSize: "5000Gi"
     cooldown: "1h"
@@ -301,7 +316,7 @@ spec:
       environment: development
   template:
     enabled: true
-    threshold: 70.0
+    threshold: "70%"
     increase: "100%"
     maxSize: "500Gi"
     cooldown: "5m"
@@ -396,148 +411,138 @@ spec:
 
 ## Complex Coordination Example
 
-### Multi-Tier Application with Mixed Policies
-Application with different storage tiers and coordination:
+### Multi-Application Coordinated Storage
+Different applications sharing coordinated storage groups:
 
 ```yaml
-# Fast tier group (SSDs)
+# Database cluster group
 apiVersion: pvc-chonker.io/v1alpha1
 kind: PVCGroup
 metadata:
-  name: app-fast-tier
-  namespace: myapp
+  name: database-cluster
+  namespace: production
 spec:
-  selector:
-    matchLabels:
-      app: myapp
-      tier: fast
-  coordinationPolicy: "largest"
   template:
-    enabled: true
-    threshold: "80%"
-    increase: "30%"
-    maxSize: "1000Gi"
-    cooldown: "20m"
----
-# Standard tier policy
-apiVersion: pvc-chonker.io/v1alpha1
-kind: PVCPolicy
-metadata:
-  name: app-standard-policy
-  namespace: myapp
-spec:
-  selector:
-    matchLabels:
-      app: myapp
-      tier: standard
-  template:
-    enabled: true
-    threshold: 75.0
-    increase: "50%"
+    threshold: "85%"
+    increase: "25%"
     maxSize: "5000Gi"
     cooldown: "1h"
 ---
-# Fast tier PVCs (coordinated)
-apiVersion: v1
-kind: PersistentVolumeClaim
+# Cache cluster group
+apiVersion: pvc-chonker.io/v1alpha1
+kind: PVCGroup
 metadata:
-  name: app-cache-1
-  labels:
-    app: myapp
-    tier: fast
-    component: cache
+  name: cache-cluster
+  namespace: production
 spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 100Gi
-  storageClassName: fast-ssd
+  template:
+    threshold: "70%"
+    increase: "50%"
+    maxSize: "1000Gi"
+    cooldown: "15m"
 ---
+# Database PVCs
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: app-cache-2
-  labels:
-    app: myapp
-    tier: fast
-    component: cache
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 100Gi
-  storageClassName: fast-ssd
----
-# Standard tier PVCs (policy-based)
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: app-data-1
-  labels:
-    app: myapp
-    tier: standard
-    component: data
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 500Gi
-  storageClassName: standard
----
-# Override for special data volume
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: app-data-critical
-  labels:
-    app: myapp
-    tier: standard
-    component: data
+  name: postgres-primary
   annotations:
-    # Override policy settings
-    pvc-chonker.io/threshold: "90%"    # More conservative
-    pvc-chonker.io/max-size: "10000Gi" # Higher limit
+    pvc-chonker.io/group: database-cluster
+    pvc-chonker.io/enabled: "true"
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
       storage: 1000Gi
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-replica
+  annotations:
+    pvc-chonker.io/group: database-cluster
+    pvc-chonker.io/enabled: "true"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 900Gi  # Will be coordinated to 1000Gi
+  storageClassName: fast-ssd
+---
+# Cache PVCs
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-cache-0
+  annotations:
+    pvc-chonker.io/group: cache-cluster
+    pvc-chonker.io/enabled: "true"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 200Gi
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-cache-1
+  annotations:
+    pvc-chonker.io/group: cache-cluster
+    pvc-chonker.io/enabled: "true"
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 150Gi  # Will be coordinated to 200Gi
+  storageClassName: fast-ssd
+```
+
+## Best Practices Examples
+
+### Gradual Expansion Strategy
+Conservative approach for critical workloads:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: critical-database
+  annotations:
+    pvc-chonker.io/enabled: "true"
+    pvc-chonker.io/threshold: "90%"           # Wait until very full
+    pvc-chonker.io/increase: "10%"            # Small increments
+    pvc-chonker.io/min-scale-up: "50Gi"       # But meaningful minimum
+    pvc-chonker.io/cooldown: "6h"             # Long cooldown
+    pvc-chonker.io/max-size: "10000Gi"        # High limit
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 500Gi
+  storageClassName: premium-ssd
+```
+
+### Aggressive Expansion Strategy
+For development or non-critical workloads:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dev-workspace
+  annotations:
+    pvc-chonker.io/enabled: "true"
+    pvc-chonker.io/threshold: "60%"           # Expand early
+    pvc-chonker.io/increase: "200%"           # Triple the size
+    pvc-chonker.io/cooldown: "2m"             # Very short cooldown
+    pvc-chonker.io/max-size: "1000Gi"         # Reasonable limit
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
   storageClassName: standard
-```
-
-## Migration Examples
-
-### Migrating from Manual to Automatic
-Gradually enabling auto-expansion:
-
-```yaml
-# Phase 1: Enable with conservative settings
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: legacy-database
-  annotations:
-    pvc-chonker.io/enabled: "true"
-    pvc-chonker.io/threshold: "95%"     # Very conservative
-    pvc-chonker.io/increase: "10%"      # Small increases
-    pvc-chonker.io/cooldown: "24h"      # Long cooldown
-    pvc-chonker.io/max-size: "2000Gi"   # Safety limit
-spec:
-  # ... existing PVC spec
-```
-
-```yaml
-# Phase 2: Optimize settings based on experience
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: legacy-database
-  annotations:
-    pvc-chonker.io/enabled: "true"
-    pvc-chonker.io/threshold: "85%"     # More aggressive
-    pvc-chonker.io/increase: "25%"      # Larger increases
-    pvc-chonker.io/cooldown: "2h"       # Shorter cooldown
-    pvc-chonker.io/max-size: "5000Gi"   # Higher limit
-spec:
-  # ... existing PVC spec
 ```

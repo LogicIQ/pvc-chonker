@@ -2,6 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: test-override-pvc
+  namespace: pvc-chonker-system
   labels:
     test-policy: enabled  # Matches PVCPolicy selector
   annotations:
