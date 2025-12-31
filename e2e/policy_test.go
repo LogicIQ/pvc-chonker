@@ -49,13 +49,25 @@ func TestPVCPolicyBasic(t *testing.T) {
 					corev1.ResourceStorage: resource.MustParse("1Gi"),
 				},
 			},
-			StorageClassName: stringPtr("standard"),
+			StorageClassName: stringPtr("expandable-local"),
 		},
 	}
 	require.NoError(t, k8sClient.Create(ctx, pvc))
 	
-	// Wait for policy to be processed
+	// Wait for policy to be processed and check if PVC gets policy settings
 	time.Sleep(15 * time.Second)
+	
+	// Check if the PVC was updated with policy settings
+	var updatedPVC corev1.PersistentVolumeClaim
+	err = k8sClient.Get(ctx, types.NamespacedName{
+		Name:      pvc.Name,
+		Namespace: pvc.Namespace,
+	}, &updatedPVC)
+	require.NoError(t, err)
+	
+	// The PVC should now have policy-derived annotations (if policy resolver is working)
+	// Note: This depends on the policy resolver implementation
+	t.Logf("PVC annotations after policy processing: %+v", updatedPVC.Annotations)
 	
 	// Check if policy was applied
 	var policy pvcchonkerv1alpha1.PVCPolicy
@@ -71,13 +83,16 @@ func TestPVCPolicyBasic(t *testing.T) {
 	assert.Equal(t, "85%", *policy.Spec.Template.Threshold)
 	assert.Equal(t, "25%", *policy.Spec.Template.Increase)
 	
+	// Check policy status - it should show matched PVCs
+	assert.Equal(t, int32(1), policy.Status.MatchedPVCs, "Policy should match 1 PVC")
+	
 	logs := getOperatorLogs(t)
 	t.Logf("Operator logs:\n%s", logs)
 	
-	if strings.Contains(strings.ToLower(logs), "policy") {
-		t.Log("PVCPolicy processing detected")
+	if strings.Contains(logs, "PVCPolicy reconciled") {
+		t.Log("PVCPolicy processing detected in logs")
 	} else {
-		t.Log("No explicit policy processing in logs")
+		t.Log("No PVCPolicy reconciliation found in logs")
 	}
 	
 	// Cleanup
@@ -125,7 +140,7 @@ func TestPVCPolicyOverride(t *testing.T) {
 					corev1.ResourceStorage: resource.MustParse("1Gi"),
 				},
 			},
-			StorageClassName: stringPtr("standard"),
+			StorageClassName: stringPtr("expandable-local"),
 		},
 	}
 	require.NoError(t, k8sClient.Create(ctx, pvc))
@@ -148,11 +163,16 @@ func TestPVCPolicyOverride(t *testing.T) {
 	logs := getOperatorLogs(t)
 	t.Logf("Operator logs:\n%s", logs)
 	
-	if strings.Contains(logs, "95") || strings.Contains(logs, "annotation") {
-		t.Log("Annotation override detected")
+	// The key test: annotations should take precedence over policy
+	if strings.Contains(logs, "PVCPolicy reconciled") {
+		t.Log("PVCPolicy controller is working")
 	} else {
-		t.Log("No explicit annotation override detection in logs")
+		t.Log("PVCPolicy controller not found in logs")
 	}
+	
+	// Verify that annotation values are preserved (not overwritten by policy)
+	assert.Equal(t, "95%", updatedPVC.Annotations["pvc-chonker.io/threshold"], "Annotation should override policy threshold")
+	assert.Equal(t, "50%", updatedPVC.Annotations["pvc-chonker.io/increase"], "Annotation should override policy increase")
 	
 	// Cleanup
 	_ = k8sClient.Delete(ctx, pvc)
