@@ -7,10 +7,13 @@ import (
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	pvcchonkerv1alpha1 "github.com/logicIQ/pvc-chonker/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -81,5 +84,38 @@ func (r *PVCPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 func (r *PVCPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pvcchonkerv1alpha1.PVCPolicy{}).
+		Watches(&corev1.PersistentVolumeClaim{},
+			handler.EnqueueRequestsFromMapFunc(r.findPVCPoliciesForPVC)).
 		Complete(r)
+}
+
+func (r *PVCPolicyReconciler) findPVCPoliciesForPVC(ctx context.Context, obj client.Object) []reconcile.Request {
+	pvc, ok := obj.(*corev1.PersistentVolumeClaim)
+	if !ok {
+		return nil
+	}
+
+	// List all PVCPolicies in the same namespace
+	var policies pvcchonkerv1alpha1.PVCPolicyList
+	if err := r.List(ctx, &policies, client.InNamespace(pvc.Namespace)); err != nil {
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for _, policy := range policies.Items {
+		// Check if this PVC matches the policy selector
+		selector, err := metav1.LabelSelectorAsSelector(&policy.Spec.Selector)
+		if err != nil {
+			continue
+		}
+		if selector.Matches(labels.Set(pvc.Labels)) {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      policy.Name,
+					Namespace: policy.Namespace,
+				},
+			})
+		}
+	}
+	return requests
 }
