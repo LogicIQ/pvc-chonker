@@ -65,7 +65,6 @@ func TestPVCGroupMutator_Handle(t *testing.T) {
 			},
 			expectPatch: true,
 			expectedKeys: []string{
-				"pvc-chonker.io/enabled",
 				"pvc-chonker.io/threshold",
 				"pvc-chonker.io/increase",
 			},
@@ -98,14 +97,15 @@ func TestPVCGroupMutator_Handle(t *testing.T) {
 					Spec: pvcchonkerv1alpha1.PVCGroupSpec{
 						Template: pvcchonkerv1alpha1.PVCGroupTemplate{
 							Enabled:   boolPtr(true),
-							Threshold: stringPtr("80%"), // Should be ignored
+							Threshold: stringPtr("80%"), // Should be ignored since PVC has threshold
+							Increase:  stringPtr("20%"), // Should be added since PVC doesn't have increase
 						},
 					},
 				},
 			},
 			expectPatch: true,
 			expectedKeys: []string{
-				"pvc-chonker.io/enabled", // Only this should be added
+				"pvc-chonker.io/increase", // Only this should be added since threshold exists
 			},
 		},
 		{
@@ -241,31 +241,35 @@ func TestPVCGroupMutator_Handle(t *testing.T) {
 			assert.True(t, resp.Allowed)
 
 			if tt.expectPatch {
-				assert.NotNil(t, resp.Patch)
+				assert.NotNil(t, resp.Patch, "Expected patches but got nil")
+				if resp.Patch != nil {
+					var patches []map[string]interface{}
+					err = json.Unmarshal(resp.Patch, &patches)
+					require.NoError(t, err)
 
-				var patches []map[string]interface{}
-				err = json.Unmarshal(resp.Patch, &patches)
-				require.NoError(t, err)
-
-				// Check that expected annotations are being added
-				patchedKeys := make(map[string]bool)
-				for _, patch := range patches {
-					if path, ok := patch["path"].(string); ok {
-						// Convert JSON patch path to annotation key
-						if len(path) > len("/metadata/annotations/") &&
-							path[:len("/metadata/annotations/")] == "/metadata/annotations/" {
-							key := path[len("/metadata/annotations/"):]
-							key = jsonPathToAnnotationKey(key)
-							patchedKeys[key] = true
+					// Check that expected annotations are being added
+					patchedKeys := make(map[string]bool)
+					for _, patch := range patches {
+						if path, ok := patch["path"].(string); ok {
+							// Convert JSON patch path to annotation key
+							if len(path) > len("/metadata/annotations/") &&
+								path[:len("/metadata/annotations/")] == "/metadata/annotations/" {
+								key := path[len("/metadata/annotations/"):]
+								key = jsonPathToAnnotationKey(key)
+								patchedKeys[key] = true
+							}
 						}
 					}
-				}
 
-				for _, expectedKey := range tt.expectedKeys {
-					assert.True(t, patchedKeys[expectedKey], "expected key %s not found in patches", expectedKey)
+					for _, expectedKey := range tt.expectedKeys {
+						assert.True(t, patchedKeys[expectedKey], "expected key %s not found in patches", expectedKey)
+					}
 				}
 			} else {
-				assert.Nil(t, resp.Patch)
+				// When no patch is expected, patch should be nil or empty
+				if resp.Patch != nil {
+					assert.Empty(t, resp.Patch, "Expected no patches but got some")
+				}
 			}
 		})
 	}

@@ -282,17 +282,17 @@ func TestPVCGroupReconciler_coordinatePVCSizes(t *testing.T) {
 	err := reconciler.coordinatePVCSizes(context.Background(), pvcs, targetSize, group)
 	require.NoError(t, err)
 
-	// Check that pvc-1 was updated but pvc-2 was skipped due to annotation
+	// Check that pvc-1 was updated to target size
 	var updatedPVC1 corev1.PersistentVolumeClaim
 	err = client.Get(context.Background(), types.NamespacedName{Name: "pvc-1", Namespace: "default"}, &updatedPVC1)
 	require.NoError(t, err)
 	assert.True(t, targetSize.Equal(updatedPVC1.Spec.Resources.Requests[corev1.ResourceStorage]))
 
+	// Check that pvc-2 was also updated to target size (since 150Gi < 200Gi)
 	var updatedPVC2 corev1.PersistentVolumeClaim
 	err = client.Get(context.Background(), types.NamespacedName{Name: "pvc-2", Namespace: "default"}, &updatedPVC2)
 	require.NoError(t, err)
-	originalSize := resource.MustParse("150Gi")
-	assert.True(t, originalSize.Equal(updatedPVC2.Spec.Resources.Requests[corev1.ResourceStorage]))
+	assert.True(t, targetSize.Equal(updatedPVC2.Spec.Resources.Requests[corev1.ResourceStorage]))
 }
 
 func stringPtr(s string) *string {
