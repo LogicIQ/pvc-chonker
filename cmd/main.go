@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/logicIQ/pvc-chonker/internal/webhook"
 	"github.com/logicIQ/pvc-chonker/pkg/annotations"
 	"github.com/logicIQ/pvc-chonker/pkg/kubelet"
+	"github.com/logicIQ/pvc-chonker/pkg/utils"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -66,7 +68,11 @@ func main() {
 	rootCmd.Flags().Bool("enable-webhook", false, "Enable admission webhook")
 
 	// Bind viper to flags
-	viper.BindPFlags(rootCmd.Flags())
+	if err := viper.BindPFlags(rootCmd.Flags()); err != nil {
+		// Use fmt.Printf since logger isn't set up yet
+		fmt.Printf("Error binding flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Set environment variable prefix
 	viper.SetEnvPrefix("PVC_CHONKER")
@@ -89,7 +95,7 @@ func run(cmd *cobra.Command, args []string) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	setupLog.Info("PVC Chonker starting", "version", version, "gitHash", gitHash)
-	setupLog.Info("Logging configuration", "format", logFormat, "level", logLevel)
+	setupLog.Info("Logging configuration", "format", utils.SanitizeForLogging(logFormat), "level", utils.SanitizeForLogging(logLevel))
 	if dryRun {
 		setupLog.Info("Starting in DRY RUN mode - no PVC modifications will be made")
 	}
@@ -108,12 +114,18 @@ func run(cmd *cobra.Command, args []string) {
 
 	var minScaleUpQty, maxSizeQty resource.Quantity
 	if minScaleUp := viper.GetString("default-min-scale-up"); minScaleUp != "" {
-		if qty, err := resource.ParseQuantity(minScaleUp); err == nil {
+		if qty, err := resource.ParseQuantity(minScaleUp); err != nil {
+			setupLog.Error(err, "invalid default-min-scale-up value", "value", utils.SanitizeForLogging(minScaleUp))
+			os.Exit(1)
+		} else {
 			minScaleUpQty = qty
 		}
 	}
 	if maxSize := viper.GetString("default-max-size"); maxSize != "" {
-		if qty, err := resource.ParseQuantity(maxSize); err == nil {
+		if qty, err := resource.ParseQuantity(maxSize); err != nil {
+			setupLog.Error(err, "invalid default-max-size value", "value", utils.SanitizeForLogging(maxSize))
+			os.Exit(1)
+		} else {
 			maxSizeQty = qty
 		}
 	}
@@ -129,7 +141,7 @@ func run(cmd *cobra.Command, args []string) {
 	// Use custom kubelet URL if provided via flag or env var (for e2e testing)
 	kubeletURL := viper.GetString("kubelet-url")
 	if kubeletURL != "" {
-		setupLog.Info("Using custom kubelet URL instead of K8s API proxy", "url", kubeletURL)
+		setupLog.Info("Using custom kubelet URL instead of K8s API proxy", "url", utils.SanitizeURL(kubeletURL))
 	} else {
 		setupLog.Info("Using Kubernetes API proxy for kubelet metrics")
 	}
@@ -201,7 +213,7 @@ func run(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager", "dryRun", dryRun, "watchInterval", viper.GetDuration("watch-interval"))
+	setupLog.Info("starting manager", "dryRun", dryRun, "watchInterval", utils.SanitizeForLogging(viper.GetDuration("watch-interval").String()))
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
