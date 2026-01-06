@@ -6,7 +6,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func createInodePVC() *corev1.PersistentVolumeClaim {
+func createInodePVC() (*corev1.PersistentVolumeClaim, error) {
+	storageQty, err := resource.ParseQuantity("1Gi")
+	if err != nil {
+		return nil, err
+	}
 	return &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-inode-pvc",
@@ -22,15 +26,19 @@ func createInodePVC() *corev1.PersistentVolumeClaim {
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse("1Gi"),
+					corev1.ResourceStorage: storageQty,
 				},
 			},
 			StorageClassName: stringPtr("expandable-local"),
 		},
-	}
+	}, nil
 }
 
-func createMaxSizePVC() *corev1.PersistentVolumeClaim {
+func createMaxSizePVC() (*corev1.PersistentVolumeClaim, error) {
+	storageQty, err := resource.ParseQuantity("1Gi")
+	if err != nil {
+		return nil, err
+	}
 	return &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-max-size-pvc",
@@ -46,15 +54,19 @@ func createMaxSizePVC() *corev1.PersistentVolumeClaim {
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse("1Gi"),
+					corev1.ResourceStorage: storageQty,
 				},
 			},
 			StorageClassName: stringPtr("expandable-local"),
 		},
-	}
+	}, nil
 }
 
-func createCooldownPVC() *corev1.PersistentVolumeClaim {
+func createCooldownPVC() (*corev1.PersistentVolumeClaim, error) {
+	storageQty, err := resource.ParseQuantity("1Gi")
+	if err != nil {
+		return nil, err
+	}
 	return &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-cooldown-pvc",
@@ -69,11 +81,11 @@ func createCooldownPVC() *corev1.PersistentVolumeClaim {
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse("1Gi"),
+					corev1.ResourceStorage: storageQty,
 				},
 			},
 			StorageClassName: stringPtr("expandable-local"),
 		},
-	}
+	}, nil
 }
 
