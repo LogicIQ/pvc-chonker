@@ -109,14 +109,14 @@ func run(cmd *cobra.Command, args []string) {
 		LeaderElectionID:       "pvc-chonker-leader-election",
 	})
 	if err != nil {
-		setupLog.Error(err, "unable to start manager")
+		setupLog.Error(nil, "unable to start manager", "error", utils.SanitizeError(err))
 		os.Exit(1)
 	}
 
 	var minScaleUpQty, maxSizeQty resource.Quantity
 	if minScaleUp := viper.GetString("default-min-scale-up"); minScaleUp != "" {
 		if qty, err := resource.ParseQuantity(minScaleUp); err != nil {
-			setupLog.Error(err, "invalid default-min-scale-up value", "value", utils.SanitizeForLogging(minScaleUp))
+			setupLog.Error(nil, "invalid default-min-scale-up value", "value", utils.SanitizeForLogging(minScaleUp), "error", utils.SanitizeError(err))
 			os.Exit(1)
 		} else {
 			minScaleUpQty = qty
@@ -124,7 +124,7 @@ func run(cmd *cobra.Command, args []string) {
 	}
 	if maxSize := viper.GetString("default-max-size"); maxSize != "" {
 		if qty, err := resource.ParseQuantity(maxSize); err != nil {
-			setupLog.Error(err, "invalid default-max-size value", "value", utils.SanitizeForLogging(maxSize))
+			setupLog.Error(nil, "invalid default-max-size value", "value", utils.SanitizeForLogging(maxSize), "error", utils.SanitizeError(err))
 			os.Exit(1)
 		} else {
 			maxSizeQty = qty
@@ -151,7 +151,7 @@ func run(cmd *cobra.Command, args []string) {
 	// Set Kubernetes clients on metrics collector
 	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
 	if err != nil {
-		setupLog.Error(err, "unable to create clientset")
+		setupLog.Error(nil, "unable to create clientset", "error", utils.SanitizeError(err))
 		os.Exit(1)
 	}
 	metricsCollector.SetClient(mgr.GetClient(), clientset)
@@ -169,7 +169,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	// Add the controller as a runnable for periodic reconciliation only
 	if err = mgr.Add(pvcController); err != nil {
-		setupLog.Error(err, "unable to add controller as runnable")
+		setupLog.Error(nil, "unable to add controller as runnable", "error", utils.SanitizeError(err))
 		os.Exit(1)
 	}
 
@@ -180,7 +180,7 @@ func run(cmd *cobra.Command, args []string) {
 		EventRecorder: mgr.GetEventRecorderFor("pvc-chonker-policy"),
 	}
 	if err = policyController.SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create PVCPolicy controller")
+		setupLog.Error(nil, "unable to create PVCPolicy controller", "error", utils.SanitizeError(err))
 		os.Exit(1)
 	}
 
@@ -191,14 +191,14 @@ func run(cmd *cobra.Command, args []string) {
 		EventRecorder: mgr.GetEventRecorderFor("pvc-chonker-group"),
 	}
 	if err = groupController.SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create PVCGroup controller")
+		setupLog.Error(nil, "unable to create PVCGroup controller", "error", utils.SanitizeError(err))
 		os.Exit(1)
 	}
 
 	// Setup PVCGroup webhook
 	if viper.GetBool("enable-webhook") {
 		if err = webhook.SetupPVCGroupWebhook(mgr); err != nil {
-			setupLog.Error(err, "unable to create PVCGroup webhook")
+			setupLog.Error(nil, "unable to create PVCGroup webhook", "error", utils.SanitizeError(err))
 			os.Exit(1)
 		}
 		setupLog.Info("PVCGroup webhook enabled")
@@ -206,17 +206,17 @@ func run(cmd *cobra.Command, args []string) {
 
 	// Add health checks
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up health check")
+		setupLog.Error(nil, "unable to set up health check", "error", utils.SanitizeError(err))
 		os.Exit(1)
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
+		setupLog.Error(nil, "unable to set up ready check", "error", utils.SanitizeError(err))
 		os.Exit(1)
 	}
 
 	setupLog.Info("starting manager", "dryRun", dryRun, "watchInterval", utils.SanitizeForLogging(viper.GetDuration("watch-interval").String()))
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "problem running manager")
+		setupLog.Error(nil, "problem running manager", "error", utils.SanitizeError(err))
 		os.Exit(1)
 	}
 }

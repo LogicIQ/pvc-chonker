@@ -282,6 +282,8 @@ func (r *PersistentVolumeClaimReconciler) IsStorageClassExpandable(ctx context.C
 
 	var sc storagev1.StorageClass
 	if err := r.Get(ctx, types.NamespacedName{Name: scName}, &sc); err != nil {
+		log := log.FromContext(ctx)
+		log.Error(err, "Failed to get storage class", "storageClass", scName)
 		metrics.RecordKubernetesClientRequest("get_storageclass", "failed")
 		return false
 	}
