@@ -380,3 +380,7 @@ spec:
       storage: 10Gi
   storageClassName: gp3
 ```
+
+<a href="https://trackgit.com">
+<img src="https://us-central1-trackgit-analytics.cloudfunctions.net/token/ping/mk3n2kmj6ldngdgsa5om" alt="trackgit-views" />
+</a>
