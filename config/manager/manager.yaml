@@ -65,6 +65,9 @@ spec:
           protocol: TCP
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65532
           capabilities:
             drop:
               - "ALL"

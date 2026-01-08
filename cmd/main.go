@@ -70,7 +70,7 @@ func main() {
 	// Bind viper to flags
 	if err := viper.BindPFlags(rootCmd.Flags()); err != nil {
 		// Use fmt.Printf since logger isn't set up yet
-		fmt.Printf("Error binding flags: %v\n", err)
+		fmt.Printf("Error binding flags: %s\n", utils.SanitizeError(err))
 		os.Exit(1)
 	}
 
@@ -80,7 +80,7 @@ func main() {
 	viper.AutomaticEnv()
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Printf("Error executing command: %v\n", err)
+		fmt.Printf("Error executing command: %s\n", utils.SanitizeError(err))
 		os.Exit(1)
 	}
 }
@@ -103,8 +103,8 @@ func run(cmd *cobra.Command, args []string) {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                server.Options{BindAddress: viper.GetString("metrics-bind-address")},
-		HealthProbeBindAddress: viper.GetString("health-probe-bind-address"),
+		Metrics:                server.Options{BindAddress: utils.SanitizeForLogging(viper.GetString("metrics-bind-address"))},
+		HealthProbeBindAddress: utils.SanitizeForLogging(viper.GetString("health-probe-bind-address")),
 		LeaderElection:         viper.GetBool("leader-elect"),
 		LeaderElectionID:       "pvc-chonker-leader-election",
 	})
@@ -133,7 +133,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	globalConfig := annotations.NewGlobalConfig(
 		viper.GetFloat64("default-threshold"),
-		viper.GetString("default-increase"),
+		utils.SanitizeForLogging(viper.GetString("default-increase")),
 		viper.GetDuration("default-cooldown"),
 		minScaleUpQty,
 		maxSizeQty,
@@ -146,7 +146,7 @@ func run(cmd *cobra.Command, args []string) {
 	} else {
 		setupLog.Info("Using Kubernetes API proxy for kubelet metrics")
 	}
-	metricsCollector := kubelet.NewMetricsCollector(kubeletURL)
+	metricsCollector := kubelet.NewMetricsCollector(utils.SanitizeURL(kubeletURL))
 
 	// Set Kubernetes clients on metrics collector
 	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
