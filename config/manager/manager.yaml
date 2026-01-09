@@ -77,6 +77,8 @@ spec:
             port: 8081
           initialDelaySeconds: 15
           periodSeconds: 20
+          failureThreshold: 3
+          timeoutSeconds: 5
         readinessProbe:
           httpGet:
             path: /readyz

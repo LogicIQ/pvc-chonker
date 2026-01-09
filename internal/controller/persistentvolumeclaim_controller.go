@@ -337,10 +337,10 @@ func (r *PersistentVolumeClaimReconciler) ExpandPVC(ctx context.Context, pvc *co
 
 	if err := r.Update(ctx, pvcCopy); err != nil {
 		metrics.RecordKubernetesClientRequest("update_pvc", "failed")
-		if client.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed to update PVC spec: %w", err)
+		if client.IgnoreNotFound(err) == nil {
+			return fmt.Errorf("PVC not found during update: %w", err)
 		}
-		return fmt.Errorf("PVC not found during update: %w", err)
+		return fmt.Errorf("failed to update PVC spec: %w", err)
 	}
 	metrics.RecordKubernetesClientRequest("update_pvc", "success")
 

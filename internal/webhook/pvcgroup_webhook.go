@@ -168,7 +168,10 @@ func (m *PVCGroupMutator) Default(ctx context.Context, obj runtime.Object) error
 		Name:      groupName,
 		Namespace: pvc.Namespace,
 	}, &pvcGroup); err != nil {
-		return client.IgnoreNotFound(err)
+		if client.IgnoreNotFound(err) == nil {
+			return nil // PVCGroup not found, skip processing
+		}
+		return err // Return other errors
 	}
 
 	// Apply group template settings as annotations if not already present

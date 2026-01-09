@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 cd /home/artur/src/github.com/LogicIQ/pvc-chonker
 

@@ -41,58 +41,67 @@ func (mc *MetricsCollector) GetVolumeMetrics(ctx context.Context, namespacedName
 	return vm, nil
 }
 
+var (
+	capacityRegex    = regexp.MustCompile(`kubelet_volume_stats_capacity_bytes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
+	availableRegex   = regexp.MustCompile(`kubelet_volume_stats_available_bytes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
+	inodesRegex      = regexp.MustCompile(`kubelet_volume_stats_inodes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
+	inodesUsedRegex  = regexp.MustCompile(`kubelet_volume_stats_inodes_used\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
+)
+
 func (mc *MetricsCollector) parseVolumeMetrics(metricsText string, namespacedName types.NamespacedName) (*VolumeMetrics, error) {
-	capacityPattern := regexp.MustCompile(fmt.Sprintf(
-		`kubelet_volume_stats_capacity_bytes\{.*namespace="%s".*persistentvolumeclaim="%s".*\}\s+(\d+)`,
-		namespacedName.Namespace, namespacedName.Name))
-	availablePattern := regexp.MustCompile(fmt.Sprintf(
-		`kubelet_volume_stats_available_bytes\{.*namespace="%s".*persistentvolumeclaim="%s".*\}\s+(\d+)`,
-		namespacedName.Namespace, namespacedName.Name))
-	inodesPattern := regexp.MustCompile(fmt.Sprintf(
-		`kubelet_volume_stats_inodes\{.*namespace="%s".*persistentvolumeclaim="%s".*\}\s+(\d+)`,
-		namespacedName.Namespace, namespacedName.Name))
-	inodesUsedPattern := regexp.MustCompile(fmt.Sprintf(
-		`kubelet_volume_stats_inodes_used\{.*namespace="%s".*persistentvolumeclaim="%s".*\}\s+(\d+)`,
-		namespacedName.Namespace, namespacedName.Name))
+	var capacity, available, inodesTotal, inodesUsed int64
+	var err error
 
-	capacityMatch := capacityPattern.FindStringSubmatch(metricsText)
-	availableMatch := availablePattern.FindStringSubmatch(metricsText)
-	inodesMatch := inodesPattern.FindStringSubmatch(metricsText)
-	inodesUsedMatch := inodesUsedPattern.FindStringSubmatch(metricsText)
+	// Find capacity
+	for _, match := range capacityRegex.FindAllStringSubmatch(metricsText, -1) {
+		if len(match) >= 4 && match[1] == namespacedName.Namespace && match[2] == namespacedName.Name {
+			if capacity, err = strconv.ParseInt(match[3], 10, 64); err != nil {
+				return nil, fmt.Errorf("invalid capacity value: %w", err)
+			}
+			break
+		}
+	}
 
-	if len(capacityMatch) < 2 || len(availableMatch) < 2 {
+	// Find available
+	for _, match := range availableRegex.FindAllStringSubmatch(metricsText, -1) {
+		if len(match) >= 4 && match[1] == namespacedName.Namespace && match[2] == namespacedName.Name {
+			if available, err = strconv.ParseInt(match[3], 10, 64); err != nil {
+				return nil, fmt.Errorf("invalid available value: %w", err)
+			}
+			break
+		}
+	}
+
+	if capacity == 0 || available == 0 {
 		return nil, fmt.Errorf("volume metrics not found for %s/%s", namespacedName.Namespace, namespacedName.Name)
 	}
 
-	capacity, err := strconv.ParseInt(capacityMatch[1], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid capacity value: %w", err)
+	// Find inodes
+	for _, match := range inodesRegex.FindAllStringSubmatch(metricsText, -1) {
+		if len(match) >= 4 && match[1] == namespacedName.Namespace && match[2] == namespacedName.Name {
+			if inodesTotal, err = strconv.ParseInt(match[3], 10, 64); err == nil {
+				break
+			}
+		}
 	}
 
-	available, err := strconv.ParseInt(availableMatch[1], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid available value: %w", err)
-	}
-
-	if capacity == 0 {
-		return nil, fmt.Errorf("zero capacity for %s/%s", namespacedName.Namespace, namespacedName.Name)
+	// Find inodes used
+	for _, match := range inodesUsedRegex.FindAllStringSubmatch(metricsText, -1) {
+		if len(match) >= 4 && match[1] == namespacedName.Namespace && match[2] == namespacedName.Name {
+			if inodesUsed, err = strconv.ParseInt(match[3], 10, 64); err == nil {
+				break
+			}
+		}
 	}
 
 	used := capacity - available
 	usagePercent := float64(used) / float64(capacity) * 100
 
-	var inodesTotal, inodesUsed, inodesFree int64
+	var inodesFree int64
 	var inodesUsagePercent float64
-
-	if len(inodesMatch) >= 2 && len(inodesUsedMatch) >= 2 {
-		if inodesTotal, err = strconv.ParseInt(inodesMatch[1], 10, 64); err == nil {
-			if inodesUsed, err = strconv.ParseInt(inodesUsedMatch[1], 10, 64); err == nil {
-				inodesFree = inodesTotal - inodesUsed
-				if inodesTotal > 0 {
-					inodesUsagePercent = float64(inodesUsed) / float64(inodesTotal) * 100
-				}
-			}
-		}
+	if inodesTotal > 0 {
+		inodesFree = inodesTotal - inodesUsed
+		inodesUsagePercent = float64(inodesUsed) / float64(inodesTotal) * 100
 	}
 
 	return &VolumeMetrics{

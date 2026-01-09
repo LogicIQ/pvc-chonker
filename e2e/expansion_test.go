@@ -76,7 +76,10 @@ func TestBasicExpansion(t *testing.T) {
 		t.Fatalf("PVC was not expanded within timeout: %v", err)
 	}
 	
-	pvc, _ = clientset.CoreV1().PersistentVolumeClaims(testNamespace).Get(ctx, "test-pvc", metav1.GetOptions{})
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(testNamespace).Get(ctx, "test-pvc", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get test PVC: %v", err)
+	}
 	finalSize := pvc.Status.Capacity[corev1.ResourceStorage]
 	t.Logf("Final PVC size: %s (expanded from %s)", finalSize.String(), originalSize.String())
 	t.Log("Basic expansion test passed")

@@ -9,8 +9,8 @@ spec:
       test-policy: enabled
   template:
     enabled: true
-    threshold: "85%"
-    inodesThreshold: "90%"
+    threshold: 85.0
+    inodesThreshold: 90.0
     increase: "25%"
     maxSize: "10Gi"
     minScaleUp: "1Gi"

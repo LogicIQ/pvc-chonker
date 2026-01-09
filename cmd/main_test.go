@@ -16,9 +16,9 @@ func TestVersionVariables(t *testing.T) {
 func TestVersionDefaults(t *testing.T) {
 	// Test that default values are set when not injected via ldflags
 	if version != "dev" && version == "" {
-		t.Error("version should have default value 'dev' when not set")
+		t.Fatal("version should have default value 'dev' when not set")
 	}
 	if gitHash != "unknown" && gitHash == "" {
-		t.Error("gitHash should have default value 'unknown' when not set")
+		t.Fatal("gitHash should have default value 'unknown' when not set")
 	}
 }
