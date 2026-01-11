@@ -95,7 +95,7 @@ func run(cmd *cobra.Command, args []string) {
 	}
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	setupLog.Info("PVC Chonker starting", "version", version, "gitHash", gitHash)
+	setupLog.Info("PVC Chonker starting", "version", utils.SanitizeForLogging(version), "gitHash", utils.SanitizeForLogging(gitHash))
 	setupLog.Info("Logging configuration", "format", utils.SanitizeForLogging(logFormat), "level", utils.SanitizeForLogging(logLevel))
 	if dryRun {
 		setupLog.Info("Starting in DRY RUN mode - no PVC modifications will be made")
@@ -133,7 +133,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	globalConfig := annotations.NewGlobalConfig(
 		viper.GetFloat64("default-threshold"),
-		utils.SanitizeForLogging(viper.GetString("default-increase")),
+		viper.GetString("default-increase"),
 		viper.GetDuration("default-cooldown"),
 		minScaleUpQty,
 		maxSizeQty,

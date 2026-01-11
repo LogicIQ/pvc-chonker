@@ -42,10 +42,10 @@ func (mc *MetricsCollector) GetVolumeMetrics(ctx context.Context, namespacedName
 }
 
 var (
-	capacityRegex    = regexp.MustCompile(`kubelet_volume_stats_capacity_bytes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
-	availableRegex   = regexp.MustCompile(`kubelet_volume_stats_available_bytes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
-	inodesRegex      = regexp.MustCompile(`kubelet_volume_stats_inodes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
-	inodesUsedRegex  = regexp.MustCompile(`kubelet_volume_stats_inodes_used\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
+	capacityRegex   = regexp.MustCompile(`kubelet_volume_stats_capacity_bytes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
+	availableRegex  = regexp.MustCompile(`kubelet_volume_stats_available_bytes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
+	inodesRegex     = regexp.MustCompile(`kubelet_volume_stats_inodes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
+	inodesUsedRegex = regexp.MustCompile(`kubelet_volume_stats_inodes_used\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
 )
 
 func (mc *MetricsCollector) parseVolumeMetrics(metricsText string, namespacedName types.NamespacedName) (*VolumeMetrics, error) {

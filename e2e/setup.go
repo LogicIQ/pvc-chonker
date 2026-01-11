@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,7 +150,7 @@ func getOperatorLogs(t *testing.T) string {
 	
 	logData, err := io.ReadAll(logs)
 	if err != nil {
-		t.Fatalf("Failed to read logs: %v", err)
+		t.Fatalf("Failed to read logs: %v", sanitizeError(err))
 	}
 	
 	return string(logData)
@@ -161,4 +162,20 @@ func int64Ptr(i int64) *int64 {
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+// sanitizeError sanitizes error messages for safe logging
+func sanitizeError(err error) string {
+	if err == nil {
+		return ""
+	}
+	// Remove all control characters including newlines, carriage returns, tabs, and ANSI escape sequences
+	var result strings.Builder
+	for _, r := range err.Error() {
+		// Only allow printable ASCII characters and spaces
+		if r >= 32 && r <= 126 {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
 }
