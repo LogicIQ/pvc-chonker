@@ -160,9 +160,14 @@ func (r *PVCGroupReconciler) findPVCGroupForPVC(ctx context.Context, obj client.
 		return nil
 	}
 
+	// Check if annotations exist
+	if pvc.Annotations == nil {
+		return nil
+	}
+
 	// Only process PVCs with group annotation
 	groupName, exists := pvc.Annotations["pvc-chonker.io/group"]
-	if !exists {
+	if !exists || groupName == "" {
 		return nil
 	}
 

@@ -133,7 +133,7 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 
-	logger.Info("Applied PVCGroup template to PVC", "pvc", pvc.Name, "group", groupName, "patches", len(patches))
+	logger.Info("Applied PVCGroup template to PVC", "pvc", pvc.Name, "group", groupName)
 
 	return admission.Response{
 		AdmissionResponse: admissionv1.AdmissionResponse{
@@ -171,6 +171,7 @@ func (m *PVCGroupMutator) Default(ctx context.Context, obj runtime.Object) error
 		if client.IgnoreNotFound(err) == nil {
 			return nil // PVCGroup not found, skip processing
 		}
+		logger.Error(err, "Failed to get PVCGroup", "group", groupName)
 		return err // Return other errors
 	}
 

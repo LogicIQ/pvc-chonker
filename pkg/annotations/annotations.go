@@ -168,6 +168,9 @@ func (c *PVCConfig) CalculateNewSize(currentSize resource.Quantity) (resource.Qu
 }
 
 func (c *PVCConfig) IsInCooldown() bool {
+	if c == nil {
+		return false
+	}
 	if c.LastExpansion == nil {
 		return false
 	}
@@ -186,6 +189,9 @@ func IsPvcResizing(pvc *corev1.PersistentVolumeClaim) bool {
 }
 
 func UpdateLastExpansion(pvc *corev1.PersistentVolumeClaim) {
+	if pvc == nil {
+		return
+	}
 	if pvc.Annotations == nil {
 		pvc.Annotations = make(map[string]string)
 	}
@@ -201,7 +207,7 @@ func parsePercentage(s string) (float64, error) {
 	percentStr := strings.TrimSuffix(s, "%")
 	percent, err := strconv.ParseFloat(percentStr, 64)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("invalid percentage value '%s': %w", percentStr, err)
 	}
 
 	if percent < 0 || percent > 100 {

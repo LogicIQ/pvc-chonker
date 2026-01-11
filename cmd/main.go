@@ -101,10 +101,16 @@ func run(cmd *cobra.Command, args []string) {
 		setupLog.Info("Starting in DRY RUN mode - no PVC modifications will be made")
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	cfg := ctrl.GetConfigOrDie()
+	if cfg == nil {
+		setupLog.Error(nil, "unable to get kubernetes config")
+		os.Exit(1)
+	}
+
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                server.Options{BindAddress: utils.SanitizeForLogging(viper.GetString("metrics-bind-address"))},
-		HealthProbeBindAddress: utils.SanitizeForLogging(viper.GetString("health-probe-bind-address")),
+		Metrics:                server.Options{BindAddress: viper.GetString("metrics-bind-address")},
+		HealthProbeBindAddress: viper.GetString("health-probe-bind-address"),
 		LeaderElection:         viper.GetBool("leader-elect"),
 		LeaderElectionID:       "pvc-chonker-leader-election",
 	})
@@ -146,7 +152,7 @@ func run(cmd *cobra.Command, args []string) {
 	} else {
 		setupLog.Info("Using Kubernetes API proxy for kubelet metrics")
 	}
-	metricsCollector := kubelet.NewMetricsCollector(utils.SanitizeURL(kubeletURL))
+	metricsCollector := kubelet.NewMetricsCollector(kubeletURL)
 
 	// Set Kubernetes clients on metrics collector
 	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())

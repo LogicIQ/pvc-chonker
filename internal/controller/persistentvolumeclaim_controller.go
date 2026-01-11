@@ -127,14 +127,14 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	semaphore := make(chan struct{}, r.MaxParallel)
 	var wg sync.WaitGroup
 
-	for _, pvc := range pvcs.Items {
+	for i := range pvcs.Items {
 		wg.Add(1)
-		go func(pvc corev1.PersistentVolumeClaim) {
+		go func(i int) {
 			defer wg.Done()
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
-			r.reconcilePVC(ctx, &pvc)
-		}(pvc)
+			r.reconcilePVC(ctx, &pvcs.Items[i])
+		}(i)
 	}
 
 	wg.Wait()
@@ -301,8 +301,12 @@ func (r *PersistentVolumeClaimReconciler) getFilesystemType(ctx context.Context,
 
 	var sc storagev1.StorageClass
 	if err := r.Get(ctx, types.NamespacedName{Name: *pvc.Spec.StorageClassName}, &sc); err != nil {
+		log := log.FromContext(ctx)
+		log.Error(err, "Failed to get storage class for filesystem type detection", "storageClass", *pvc.Spec.StorageClassName)
+		metrics.RecordKubernetesClientRequest("get_storageclass_fstype", "failed")
 		return "unknown"
 	}
+	metrics.RecordKubernetesClientRequest("get_storageclass_fstype", "success")
 
 	if fsType, exists := sc.Parameters["fsType"]; exists {
 		return fsType
@@ -337,10 +341,10 @@ func (r *PersistentVolumeClaimReconciler) ExpandPVC(ctx context.Context, pvc *co
 
 	if err := r.Update(ctx, pvcCopy); err != nil {
 		metrics.RecordKubernetesClientRequest("update_pvc", "failed")
-		if client.IgnoreNotFound(err) == nil {
-			return fmt.Errorf("PVC not found during update: %w", err)
+		if client.IgnoreNotFound(err) != nil {
+			return fmt.Errorf("failed to update PVC spec: %w", err)
 		}
-		return fmt.Errorf("failed to update PVC spec: %w", err)
+		return fmt.Errorf("PVC not found during update: %w", err)
 	}
 	metrics.RecordKubernetesClientRequest("update_pvc", "success")
 

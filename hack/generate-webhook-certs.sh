@@ -1,7 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-cd /home/artur/src/github.com/LogicIQ/pvc-chonker
+# Change to script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$(dirname "$SCRIPT_DIR)"
 
 # Generate new certificate with SANs
 openssl req -x509 -newkey rsa:2048 -keyout tls.key -out tls.crt -days 36500 -nodes \
