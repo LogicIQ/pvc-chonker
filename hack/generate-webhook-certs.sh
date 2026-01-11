@@ -3,7 +3,8 @@ set -euo pipefail
 
 # Change to script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$(dirname "$SCRIPT_DIR)"
+cd "$SCRIPT_DIR/.."
+
 
 # Generate new certificate with SANs
 openssl req -x509 -newkey rsa:2048 -keyout tls.key -out tls.crt -days 36500 -nodes \
@@ -25,9 +26,9 @@ metadata:
     kics.io/ignore: "true"
 type: kubernetes.io/tls
 data:
-  tls.crt: $(base64 -w 0 < tls.crt)
-  tls.key: $(base64 -w 0 < tls.key)
-  ca.crt: $(base64 -w 0 < tls.crt)
+  tls.crt: $(base64 -w 0 < tls.crt || { echo "Error: Failed to encode tls.crt" >&2; exit 1; })
+  tls.key: $(base64 -w 0 < tls.key || { echo "Error: Failed to encode tls.key" >&2; exit 1; })
+  ca.crt: $(base64 -w 0 < tls.crt || { echo "Error: Failed to encode ca.crt" >&2; exit 1; })
 EOF
 
 # Create mutating webhook configuration with actual CA bundle
@@ -43,7 +44,7 @@ webhooks:
       name: pvc-chonker-webhook-service
       namespace: pvc-chonker-system
       path: "/mutate--v1-persistentvolumeclaim"
-    caBundle: $(base64 -w 0 < tls.crt)
+    caBundle: $(base64 -w 0 < tls.crt || { echo "Error: Failed to encode CA bundle" >&2; exit 1; })
   rules:
   - operations: ["CREATE", "UPDATE"]
     apiGroups: [""]

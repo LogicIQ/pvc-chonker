@@ -17,4 +17,4 @@ webhooks:
     resources: ["persistentvolumeclaims"]
   admissionReviewVersions: ["v1beta1", "v1"]
   sideEffects: None
-  failurePolicy: Ignore
+  failurePolicy: Fail
