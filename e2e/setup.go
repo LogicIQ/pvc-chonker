@@ -65,6 +65,7 @@ func generateRandomString(length int) string {
 }
 
 func TestMain(m *testing.M) {
+	// Run all tests
 	m.Run()
 }
 

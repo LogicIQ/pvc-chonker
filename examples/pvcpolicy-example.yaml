@@ -20,6 +20,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postgres-data
+  namespace: default
   labels:
     workload: database  # Matches policy selector
 spec:

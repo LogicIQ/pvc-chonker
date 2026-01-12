@@ -54,7 +54,7 @@ spec:
         - name: PVC_CHONKER_LOG_LEVEL
           value: "debug"
         image: logiciq/pvc-chonker:latest
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         name: manager
         ports:
         - containerPort: 9443
@@ -67,7 +67,7 @@ spec:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
           runAsNonRoot: true
-          runAsUser: 65532
+          runAsUser: 65532  # nonroot user from distroless image
           capabilities:
             drop:
               - "ALL"
@@ -85,6 +85,8 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         resources:
           limits:
             cpu: 500m

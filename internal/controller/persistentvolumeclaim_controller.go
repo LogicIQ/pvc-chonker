@@ -129,12 +129,12 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 
 	for i := range pvcs.Items {
 		wg.Add(1)
-		go func(i int) {
+		go func(pvc *corev1.PersistentVolumeClaim) {
 			defer wg.Done()
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
-			r.reconcilePVC(ctx, &pvcs.Items[i])
-		}(i)
+			r.reconcilePVC(ctx, pvc)
+		}(&pvcs.Items[i])
 	}
 
 	wg.Wait()
@@ -352,6 +352,7 @@ func (r *PersistentVolumeClaimReconciler) ExpandPVC(ctx context.Context, pvc *co
 }
 
 func (r *PersistentVolumeClaimReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
-	return nil
+	// This reconciler uses a custom Start method instead of the standard controller pattern
+	// The Start method handles periodic reconciliation of all PVCs
+	return mgr.Add(r)
 }

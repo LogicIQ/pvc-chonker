@@ -20,8 +20,6 @@ func TestBasicExpansion(t *testing.T) {
 	// Wait for test pod to be ready
 	waitForPod(t, "test-pod", testNamespace)
 	
-	time.Sleep(5 * time.Second)
-	
 	pvcs, err := clientset.CoreV1().PersistentVolumeClaims(testNamespace).List(ctx, metav1.ListOptions{})
 	if err == nil {
 		t.Logf("Found %d PVCs in %s namespace", len(pvcs.Items), testNamespace)
@@ -93,7 +91,11 @@ func TestInodeExpansion(t *testing.T) {
 	if err != nil && !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("Failed to create inode PVC: %v", err)
 	}
-	defer clientset.CoreV1().PersistentVolumeClaims(testNamespace).Delete(ctx, "test-inode-pvc", metav1.DeleteOptions{})
+	defer func() {
+		if err := clientset.CoreV1().PersistentVolumeClaims(testNamespace).Delete(ctx, "test-inode-pvc", metav1.DeleteOptions{}); err != nil {
+			t.Logf("Warning: Failed to cleanup inode PVC: %v", err)
+		}
+	}()
 	
 	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
 		pvc, err := clientset.CoreV1().PersistentVolumeClaims(testNamespace).Get(ctx, "test-inode-pvc", metav1.GetOptions{})
@@ -113,7 +115,14 @@ func TestInodeExpansion(t *testing.T) {
 	originalSize := pvc.Status.Capacity[corev1.ResourceStorage]
 	t.Logf("Original inode PVC size: %s", originalSize.String())
 	
-	time.Sleep(15 * time.Second)
+	// Wait for operator to process the PVC
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
+		logs := getOperatorLogs(t)
+		return strings.Contains(logs, "test-inode-pvc"), nil
+	})
+	if err != nil {
+		t.Log("Operator may not have processed inode PVC yet")
+	}
 	
 	logs := getOperatorLogs(t)
 	t.Logf("Operator logs:\n%s", logs)
@@ -135,7 +144,11 @@ func TestMaxSizeLimit(t *testing.T) {
 	if err != nil && !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("Failed to create max size PVC: %v", err)
 	}
-	defer clientset.CoreV1().PersistentVolumeClaims(testNamespace).Delete(ctx, "test-max-size-pvc", metav1.DeleteOptions{})
+	defer func() {
+		if err := clientset.CoreV1().PersistentVolumeClaims(testNamespace).Delete(ctx, "test-max-size-pvc", metav1.DeleteOptions{}); err != nil {
+			t.Logf("Warning: Failed to cleanup max size PVC: %v", err)
+		}
+	}()
 	
 	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
 		pvc, err := clientset.CoreV1().PersistentVolumeClaims(testNamespace).Get(ctx, "test-max-size-pvc", metav1.GetOptions{})
@@ -148,7 +161,14 @@ func TestMaxSizeLimit(t *testing.T) {
 		t.Fatalf("PVC did not bind: %v", err)
 	}
 	
-	time.Sleep(15 * time.Second)
+	// Wait for operator to process the PVC
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
+		logs := getOperatorLogs(t)
+		return strings.Contains(logs, "test-max-size-pvc"), nil
+	})
+	if err != nil {
+		t.Log("Operator may not have processed max size PVC yet")
+	}
 	
 	logs := getOperatorLogs(t)
 	t.Logf("Operator logs:\n%s", logs)

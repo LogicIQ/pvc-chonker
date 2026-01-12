@@ -79,10 +79,13 @@ func TestPVCGroupReconciler_Reconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedStatus: pvcchonkerv1alpha1.PVCGroupStatus{
-				MemberCount: 2,
-				CurrentSize: &[]resource.Quantity{resource.MustParse("200Gi")}[0],
-			},
+			expectedStatus: func() pvcchonkerv1alpha1.PVCGroupStatus {
+				expectedSize := resource.MustParse("200Gi")
+				return pvcchonkerv1alpha1.PVCGroupStatus{
+					MemberCount: 2,
+					CurrentSize: &expectedSize,
+				}
+			}(),
 		},
 		{
 			name: "group with disabled PVC",

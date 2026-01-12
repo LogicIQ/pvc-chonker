@@ -74,7 +74,7 @@ webhooks:
 EOF
 
 # Cleanup temp files
-rm -f ca.key ca.crt ca.srl tls.key tls.crt server.csr
+rm -vf ca.key ca.crt ca.srl tls.key tls.crt server.csr
 
 echo "Webhook secret and configuration created successfully!"
 echo "Secret: $SECRET_NAME in namespace $NAMESPACE"
