@@ -42,6 +42,7 @@ spec:
               template:
                 description: Template defines the expansion configuration for the
                   group
+                minProperties: 1
                 properties:
                   cooldown:
                     description: Cooldown is the minimum time between expansions
@@ -52,10 +53,12 @@ spec:
                   increase:
                     description: Increase specifies the expansion amount (percentage
                       or absolute)
+                    pattern: ^([0-9]+(\.[0-9]*)?%?|[0-9]+(\.[0-9]*)?[KMGTPE]i?)$
                     type: string
                   inodesThreshold:
                     description: InodesThreshold is the inode usage percentage that
                       triggers expansion
+                    pattern: ^([0-9]+(\.[0-9]*)?%?)$
                     type: string
                   maxSize:
                     anyOf:
@@ -75,6 +78,7 @@ spec:
                   threshold:
                     description: Threshold is the storage usage percentage that triggers
                       expansion
+                    pattern: ^([0-9]+(\.[0-9]*)?%?)$
                     type: string
                 type: object
             required:

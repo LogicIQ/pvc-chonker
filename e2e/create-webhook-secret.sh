@@ -45,10 +45,16 @@ kubectl create secret tls $SECRET_NAME \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Add CA cert to the secret
-kubectl patch secret $SECRET_NAME -n $NAMESPACE -p "{\"data\":{\"ca.crt\":\"$(base64 -w 0 < ca.crt)\"}}"
+if ! kubectl patch secret $SECRET_NAME -n $NAMESPACE -p "{\"data\":{\"ca.crt\":\"$(base64 -w 0 < ca.crt)\"}}"; then
+    echo "Error: Failed to patch secret with CA certificate"
+    exit 1
+fi
 
 # Create mutating webhook configuration
-CA_BUNDLE=$(base64 -w 0 < ca.crt)
+if ! CA_BUNDLE=$(base64 -w 0 < ca.crt); then
+    echo "Error: Failed to encode CA certificate"
+    exit 1
+fi
 
 cat <<EOF | kubectl apply -f -
 apiVersion: admissionregistration.k8s.io/v1

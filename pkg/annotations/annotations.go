@@ -50,6 +50,12 @@ type PVCConfig struct {
 }
 
 func ParsePVCAnnotations(pvc *corev1.PersistentVolumeClaim, global *GlobalConfig) (*PVCConfig, error) {
+	if pvc == nil {
+		return nil, fmt.Errorf("PVC cannot be nil")
+	}
+	if global == nil {
+		return nil, fmt.Errorf("global config cannot be nil")
+	}
 	if pvc.Annotations == nil {
 		return nil, fmt.Errorf("no annotations found")
 	}
@@ -133,6 +139,10 @@ func ParsePVCAnnotations(pvc *corev1.PersistentVolumeClaim, global *GlobalConfig
 }
 
 func (c *PVCConfig) CalculateNewSize(currentSize resource.Quantity) (resource.Quantity, error) {
+	if c == nil {
+		return resource.Quantity{}, fmt.Errorf("PVCConfig is nil")
+	}
+
 	increase := strings.TrimSpace(c.Increase)
 
 	var increaseBytes int64
@@ -178,7 +188,7 @@ func (c *PVCConfig) IsInCooldown() bool {
 }
 
 func (c *PVCConfig) ExceedsMaxSize(newSize resource.Quantity) bool {
-	if c.MaxSize.IsZero() {
+	if c == nil || c.MaxSize.IsZero() {
 		return false
 	}
 	return newSize.Cmp(c.MaxSize) > 0
@@ -199,19 +209,27 @@ func UpdateLastExpansion(pvc *corev1.PersistentVolumeClaim) {
 }
 
 func parsePercentage(s string) (float64, error) {
+	if s == "" {
+		return 0, fmt.Errorf("percentage value cannot be empty")
+	}
+
 	s = strings.TrimSpace(s)
 	if !strings.HasSuffix(s, "%") {
-		return 0, fmt.Errorf("percentage must end with %%")
+		return 0, fmt.Errorf("percentage must end with %% (got: %q)", s)
 	}
 
 	percentStr := strings.TrimSuffix(s, "%")
+	if percentStr == "" {
+		return 0, fmt.Errorf("percentage value cannot be empty before %%")
+	}
+
 	percent, err := strconv.ParseFloat(percentStr, 64)
 	if err != nil {
-		return 0, fmt.Errorf("invalid percentage value '%s': %w", percentStr, err)
+		return 0, fmt.Errorf("invalid percentage value %q: %w", percentStr, err)
 	}
 
 	if percent < 0 || percent > 100 {
-		return 0, fmt.Errorf("percentage must be between 0 and 100")
+		return 0, fmt.Errorf("percentage must be between 0 and 100 (got: %.2f)", percent)
 	}
 
 	return percent, nil

@@ -156,9 +156,13 @@ func (m *PVCGroupMutator) Default(ctx context.Context, obj runtime.Object) error
 		return nil
 	}
 
-	// Check if PVC has a group annotation
+	// Check if PVC has annotations and a group annotation
+	if pvc.Annotations == nil {
+		return nil
+	}
+
 	groupName, hasGroup := pvc.Annotations["pvc-chonker.io/group"]
-	if !hasGroup {
+	if !hasGroup || groupName == "" {
 		return nil
 	}
 
@@ -169,17 +173,15 @@ func (m *PVCGroupMutator) Default(ctx context.Context, obj runtime.Object) error
 		Namespace: pvc.Namespace,
 	}, &pvcGroup); err != nil {
 		if client.IgnoreNotFound(err) == nil {
+			logger.V(1).Info("PVCGroup not found, skipping template application", "group", groupName)
 			return nil // PVCGroup not found, skip processing
 		}
-		logger.Error(err, "Failed to get PVCGroup", "group", groupName)
-		return err // Return other errors
+		logger.Error(err, "Failed to get PVCGroup", "group", groupName, "namespace", pvc.Namespace)
+		return fmt.Errorf("failed to get PVCGroup %s/%s: %w", pvc.Namespace, groupName, err)
 	}
 
 	// Apply group template settings as annotations if not already present
-	if pvc.Annotations == nil {
-		pvc.Annotations = make(map[string]string)
-	}
-
+	// (annotations are guaranteed to exist at this point)
 	template := pvcGroup.Spec.Template
 
 	// Apply template annotations if they don't exist

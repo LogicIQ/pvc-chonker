@@ -67,7 +67,6 @@ spec:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
           runAsNonRoot: true
-          runAsUser: 65532  # nonroot user from distroless image
           capabilities:
             drop:
               - "ALL"

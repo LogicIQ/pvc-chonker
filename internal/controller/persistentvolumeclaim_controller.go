@@ -129,12 +129,12 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 
 	for i := range pvcs.Items {
 		wg.Add(1)
-		go func(pvc *corev1.PersistentVolumeClaim) {
+		go func(pvc corev1.PersistentVolumeClaim) {
 			defer wg.Done()
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
-			r.reconcilePVC(ctx, pvc)
-		}(&pvcs.Items[i])
+			r.reconcilePVC(ctx, &pvc)
+		}(pvcs.Items[i])
 	}
 
 	wg.Wait()
@@ -341,10 +341,12 @@ func (r *PersistentVolumeClaimReconciler) ExpandPVC(ctx context.Context, pvc *co
 
 	if err := r.Update(ctx, pvcCopy); err != nil {
 		metrics.RecordKubernetesClientRequest("update_pvc", "failed")
-		if client.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed to update PVC spec: %w", err)
+		if client.IgnoreNotFound(err) == nil {
+			// Error was "not found", which means PVC was deleted
+			return fmt.Errorf("PVC not found during update: %w", err)
 		}
-		return fmt.Errorf("PVC not found during update: %w", err)
+		// Other error occurred
+		return fmt.Errorf("failed to update PVC spec: %w", err)
 	}
 	metrics.RecordKubernetesClientRequest("update_pvc", "success")
 

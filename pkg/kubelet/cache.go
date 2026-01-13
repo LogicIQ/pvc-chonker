@@ -63,7 +63,6 @@ func (mc *MetricsCollector) GetAllVolumeMetrics(ctx context.Context) (*MetricsCa
 }
 
 func (mc *MetricsCollector) fetchAllNodeMetrics(ctx context.Context, cache *MetricsCache) error {
-	// Get list of nodes
 	var nodes corev1.NodeList
 	if err := mc.client.List(ctx, &nodes); err != nil {
 		return fmt.Errorf("failed to list nodes: %w", err)
@@ -73,7 +72,6 @@ func (mc *MetricsCollector) fetchAllNodeMetrics(ctx context.Context, cache *Metr
 		return fmt.Errorf("no nodes found")
 	}
 
-	// Use errgroup to fetch metrics from all nodes in parallel
 	eg, ectx := errgroup.WithContext(ctx)
 	for _, node := range nodes.Items {
 		nodeName := node.Name
@@ -89,11 +87,9 @@ func (mc *MetricsCollector) fetchNodeMetrics(ctx context.Context, nodeName strin
 	var respBody []byte
 	var err error
 
-	// Use custom kubelet URL if provided (for e2e testing), otherwise use K8s API proxy
 	if mc.kubeletURL != "" {
 		respBody, err = mc.fetchFromCustomURL(ctx)
 	} else {
-		// Use Kubernetes API proxy to access kubelet metrics
 		req := mc.clientset.
 			CoreV1().
 			RESTClient().
@@ -110,7 +106,6 @@ func (mc *MetricsCollector) fetchNodeMetrics(ctx context.Context, nodeName strin
 		return fmt.Errorf("failed to get metrics from node %s: %w", nodeName, err)
 	}
 
-	// Parse Prometheus metrics exactly like ava-labs
 	parser := expfmt.TextParser{}
 	metricFamilies, err := parser.TextToMetricFamilies(bytes.NewReader(respBody))
 	if err != nil {
@@ -170,7 +165,6 @@ func (mc *MetricsCollector) fetchFromCustomURL(ctx context.Context) ([]byte, err
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			// Log the close error but don't override the main error
 		}
 	}()
 
@@ -193,10 +187,14 @@ func (mc *MetricsCollector) parseMetric(m *dto.Metric) (pvcName types.Namespaced
 	return pvcName, value
 }
 
+func (cache *MetricsCache) keyFromNamespacedName(nn types.NamespacedName) string {
+	return nn.Namespace + "/" + nn.Name
+}
+
 func (cache *MetricsCache) Get(namespacedName types.NamespacedName) (*VolumeMetrics, bool) {
 	cache.mutex.RLock()
 	defer cache.mutex.RUnlock()
-	key := namespacedName.Namespace + "/" + namespacedName.Name
+	key := cache.keyFromNamespacedName(namespacedName)
 	metrics, exists := cache.data[key]
 	return metrics, exists
 }
@@ -204,13 +202,18 @@ func (cache *MetricsCache) Get(namespacedName types.NamespacedName) (*VolumeMetr
 func (cache *MetricsCache) GetAll() map[string]*VolumeMetrics {
 	cache.mutex.RLock()
 	defer cache.mutex.RUnlock()
-	return cache.data
+
+	result := make(map[string]*VolumeMetrics, len(cache.data))
+	for k, v := range cache.data {
+		result[k] = v
+	}
+	return result
 }
 
 func (cache *MetricsCache) setCapacity(pvcName types.NamespacedName, value int64) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
-	key := pvcName.Namespace + "/" + pvcName.Name
+	key := cache.keyFromNamespacedName(pvcName)
 	if cache.data[key] == nil {
 		cache.data[key] = &VolumeMetrics{}
 	}
@@ -220,7 +223,7 @@ func (cache *MetricsCache) setCapacity(pvcName types.NamespacedName, value int64
 func (cache *MetricsCache) setAvailable(pvcName types.NamespacedName, value int64) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
-	key := pvcName.Namespace + "/" + pvcName.Name
+	key := cache.keyFromNamespacedName(pvcName)
 	if cache.data[key] == nil {
 		cache.data[key] = &VolumeMetrics{}
 	}
@@ -230,7 +233,7 @@ func (cache *MetricsCache) setAvailable(pvcName types.NamespacedName, value int6
 func (cache *MetricsCache) setInodesTotal(pvcName types.NamespacedName, value int64) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
-	key := pvcName.Namespace + "/" + pvcName.Name
+	key := cache.keyFromNamespacedName(pvcName)
 	if cache.data[key] == nil {
 		cache.data[key] = &VolumeMetrics{}
 	}
@@ -240,7 +243,7 @@ func (cache *MetricsCache) setInodesTotal(pvcName types.NamespacedName, value in
 func (cache *MetricsCache) setInodesUsed(pvcName types.NamespacedName, value int64) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
-	key := pvcName.Namespace + "/" + pvcName.Name
+	key := cache.keyFromNamespacedName(pvcName)
 	if cache.data[key] == nil {
 		cache.data[key] = &VolumeMetrics{}
 	}

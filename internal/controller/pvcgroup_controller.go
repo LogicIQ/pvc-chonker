@@ -51,7 +51,12 @@ func (r *PVCGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Fetch the PVCGroup instance
 	var pvcGroup pvcchonkerv1alpha1.PVCGroup
 	if err := r.Get(ctx, req.NamespacedName, &pvcGroup); err != nil {
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		if client.IgnoreNotFound(err) == nil {
+			// Resource was deleted, nothing to do
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "Failed to get PVCGroup", "namespacedName", req.NamespacedName)
+		return ctrl.Result{}, err
 	}
 
 	// Get all PVCs in the namespace (we'll filter by annotation)
