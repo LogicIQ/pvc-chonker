@@ -109,8 +109,8 @@ func run(cmd *cobra.Command, args []string) {
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                server.Options{BindAddress: viper.GetString("metrics-bind-address")},
-		HealthProbeBindAddress: viper.GetString("health-probe-bind-address"),
+		Metrics:                server.Options{BindAddress: utils.SanitizeForLogging(viper.GetString("metrics-bind-address"))},
+		HealthProbeBindAddress: utils.SanitizeForLogging(viper.GetString("health-probe-bind-address")),
 		LeaderElection:         viper.GetBool("leader-elect"),
 		LeaderElectionID:       "pvc-chonker-leader-election",
 	})

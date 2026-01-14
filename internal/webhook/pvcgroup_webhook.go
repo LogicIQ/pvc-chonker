@@ -148,6 +148,33 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 	}
 }
 
+// applyTemplateToAnnotations applies PVCGroup template settings to PVC annotations
+func applyTemplateToAnnotations(annotations map[string]string, template pvcchonkerv1alpha1.PVCGroupTemplate) {
+	if template.Threshold != nil {
+		if _, exists := annotations["pvc-chonker.io/threshold"]; !exists {
+			annotations["pvc-chonker.io/threshold"] = *template.Threshold
+		}
+	}
+
+	if template.Increase != nil {
+		if _, exists := annotations["pvc-chonker.io/increase"]; !exists {
+			annotations["pvc-chonker.io/increase"] = *template.Increase
+		}
+	}
+
+	if template.MaxSize != nil {
+		if _, exists := annotations["pvc-chonker.io/max-size"]; !exists {
+			annotations["pvc-chonker.io/max-size"] = template.MaxSize.String()
+		}
+	}
+
+	if template.Cooldown != nil {
+		if _, exists := annotations["pvc-chonker.io/cooldown"]; !exists {
+			annotations["pvc-chonker.io/cooldown"] = template.Cooldown.Duration.String()
+		}
+	}
+}
+
 // Default implements the admission.CustomDefaulter interface
 func (m *PVCGroupMutator) Default(ctx context.Context, obj runtime.Object) error {
 	logger := log.FromContext(ctx)
@@ -182,20 +209,7 @@ func (m *PVCGroupMutator) Default(ctx context.Context, obj runtime.Object) error
 
 	// Apply group template settings as annotations if not already present
 	// (annotations are guaranteed to exist at this point)
-	template := pvcGroup.Spec.Template
-
-	// Apply template annotations if they don't exist
-	if template.Threshold != nil {
-		if _, exists := pvc.Annotations["pvc-chonker.io/threshold"]; !exists {
-			pvc.Annotations["pvc-chonker.io/threshold"] = *template.Threshold
-		}
-	}
-
-	if template.Increase != nil {
-		if _, exists := pvc.Annotations["pvc-chonker.io/increase"]; !exists {
-			pvc.Annotations["pvc-chonker.io/increase"] = *template.Increase
-		}
-	}
+	applyTemplateToAnnotations(pvc.Annotations, pvcGroup.Spec.Template)
 
 	logger.Info("Applied PVCGroup template to PVC", "pvc", pvc.Name, "group", groupName)
 	return nil

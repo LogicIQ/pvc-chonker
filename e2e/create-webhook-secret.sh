@@ -12,19 +12,34 @@ echo "Creating webhook certificates for namespace: $NAMESPACE"
 kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
 
 # Generate CA private key
-openssl genrsa -out ca.key 2048
+if ! openssl genrsa -out ca.key 2048; then
+    echo "Error: Failed to generate CA private key"
+    exit 1
+fi
 
 # Generate CA certificate
-openssl req -new -x509 -days 365 -key ca.key -out ca.crt -subj "/CN=pvc-chonker-ca"
+if ! openssl req -new -x509 -days 365 -key ca.key -out ca.crt -subj "/CN=pvc-chonker-ca"; then
+    echo "Error: Failed to generate CA certificate"
+    rm -f ca.key
+    exit 1
+fi
 
 # Generate server private key
-openssl genrsa -out tls.key 2048
+if ! openssl genrsa -out tls.key 2048; then
+    echo "Error: Failed to generate server private key"
+    rm -f ca.key ca.crt
+    exit 1
+fi
 
 # Generate server certificate signing request
-openssl req -new -key tls.key -out server.csr -subj "/CN=$SERVICE_NAME.$NAMESPACE.svc"
+if ! openssl req -new -key tls.key -out server.csr -subj "/CN=$SERVICE_NAME.$NAMESPACE.svc"; then
+    echo "Error: Failed to generate server certificate signing request"
+    rm -f ca.key ca.crt tls.key
+    exit 1
+fi
 
 # Generate server certificate
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out tls.crt -days 365 -extensions v3_req -extfile <(cat <<EOF
+if ! openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out tls.crt -days 365 -extensions v3_req -extfile <(cat <<EOF
 [v3_req]
 basicConstraints = CA:FALSE
 keyUsage = nonRepudiation, digitalSignature, keyEncipherment
@@ -35,7 +50,11 @@ DNS.2 = $SERVICE_NAME.$NAMESPACE
 DNS.3 = $SERVICE_NAME.$NAMESPACE.svc
 DNS.4 = $SERVICE_NAME.$NAMESPACE.svc.cluster.local
 EOF
-)
+); then
+    echo "Error: Failed to generate server certificate"
+    rm -f ca.key ca.crt ca.srl tls.key server.csr
+    exit 1
+fi
 
 # Create the secret
 kubectl create secret tls $SECRET_NAME \

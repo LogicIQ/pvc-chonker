@@ -3,6 +3,8 @@ package utils
 import (
 	"net/url"
 	"strings"
+
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 // SanitizeForLogging removes characters that could be used for log injection attacks
@@ -24,9 +26,11 @@ func SanitizeURL(rawURL string) string {
 
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
+		ctrl.Log.Error(err, "Failed to parse URL", "rawURL", SanitizeForLogging(rawURL))
 		return SanitizeForLogging(rawURL)
 	}
 
+	parsedURL.User = nil
 	return parsedURL.String()
 }
 

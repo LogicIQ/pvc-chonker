@@ -93,9 +93,9 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	metrics.RecordKubernetesClientRequest("list_pvcs", "success")
 
 	managedPVCs := make([]corev1.PersistentVolumeClaim, 0, len(pvcs.Items))
-	for _, pvc := range pvcs.Items {
-		if _, err := r.policyResolver.ResolvePVCConfig(ctx, &pvc, r.GlobalConfig); err == nil {
-			managedPVCs = append(managedPVCs, pvc)
+	for i := range pvcs.Items {
+		if _, err := r.policyResolver.ResolvePVCConfig(ctx, &pvcs.Items[i], r.GlobalConfig); err == nil {
+			managedPVCs = append(managedPVCs, pvcs.Items[i])
 		}
 	}
 	pvcs.Items = managedPVCs
@@ -113,9 +113,19 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	}
 	log.V(1).Info("Successfully fetched kubelet metrics", "volumeCount", len(metricsCache.GetAll()))
 	for key, vm := range metricsCache.GetAll() {
+		if vm == nil {
+			log.V(1).Info("Skipping nil volume metrics", "pvc", key)
+			continue
+		}
 		log.V(1).Info("Found volume metrics", "pvc", key, "usage", vm.UsagePercent, "capacity", vm.CapacityBytes)
 	}
 	metrics.RecordKubeletClientRequest("success")
+	if metricsCache == nil {
+		log.Error(nil, "Metrics cache is nil after successful fetch")
+		metrics.ReconciliationStatus.WithLabelValues("failure").Set(1)
+		metrics.ReconciliationStatus.WithLabelValues("success").Set(0)
+		return
+	}
 	r.metricsCache = metricsCache
 
 	metrics.ManagedPVCsTotal.Set(float64(len(managedPVCs)))

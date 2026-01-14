@@ -174,6 +174,9 @@ func (c *PVCConfig) CalculateNewSize(currentSize resource.Quantity) (resource.Qu
 	roundedBytes := ((newBytes + gibBoundary - 1) / gibBoundary) * gibBoundary
 
 	newSize := resource.NewQuantity(roundedBytes, resource.BinarySI)
+	if newSize == nil {
+		return resource.Quantity{}, fmt.Errorf("failed to create new quantity")
+	}
 	return *newSize, nil
 }
 
@@ -195,7 +198,15 @@ func (c *PVCConfig) ExceedsMaxSize(newSize resource.Quantity) bool {
 }
 
 func IsPvcResizing(pvc *corev1.PersistentVolumeClaim) bool {
-	return len(pvc.Status.Conditions) > 0
+	for _, condition := range pvc.Status.Conditions {
+		if condition.Type == corev1.PersistentVolumeClaimResizing ||
+			condition.Type == corev1.PersistentVolumeClaimFileSystemResizePending {
+			if condition.Status == corev1.ConditionTrue {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func UpdateLastExpansion(pvc *corev1.PersistentVolumeClaim) {
@@ -241,6 +252,19 @@ func NewGlobalConfig(threshold float64, increase string, cooldown time.Duration,
 	}
 	if increase == "" {
 		increase = DefaultIncrease
+	} else {
+		// Validate increase format
+		increase = strings.TrimSpace(increase)
+		if strings.HasSuffix(increase, "%") {
+			percentStr := strings.TrimSuffix(increase, "%")
+			if _, err := strconv.ParseFloat(percentStr, 64); err != nil {
+				increase = DefaultIncrease
+			}
+		} else {
+			if _, err := resource.ParseQuantity(increase); err != nil {
+				increase = DefaultIncrease
+			}
+		}
 	}
 	if cooldown <= 0 {
 		cooldown = DefaultCooldown

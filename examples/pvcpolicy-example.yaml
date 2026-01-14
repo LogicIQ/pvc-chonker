@@ -22,10 +22,12 @@ metadata:
   name: postgres-data
   namespace: default
   labels:
-    workload: database  # Matches policy selector
+    workload: database  # Matches policy selector - PVCPolicy will apply settings
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
       storage: 100Gi
+  # IMPORTANT: Ensure the storage class exists and has allowVolumeExpansion: true
+  # Otherwise, PVC expansion will fail even if policy is configured correctly
   storageClassName: fast-ssd
