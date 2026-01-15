@@ -139,6 +139,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	globalConfig := annotations.NewGlobalConfig(
 		viper.GetFloat64("default-threshold"),
+		0, // inodesThreshold - will use default
 		viper.GetString("default-increase"),
 		viper.GetDuration("default-cooldown"),
 		minScaleUpQty,
@@ -220,7 +221,7 @@ func run(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager", "dryRun", dryRun, "watchInterval", utils.SanitizeForLogging(viper.GetDuration("watch-interval").String()))
+	setupLog.Info("starting manager", "dryRun", fmt.Sprintf("%t", dryRun), "watchInterval", utils.SanitizeForLogging(viper.GetDuration("watch-interval").String()))
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(nil, "problem running manager", "error", utils.SanitizeError(err))
 		os.Exit(1)

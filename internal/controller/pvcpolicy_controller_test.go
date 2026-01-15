@@ -20,8 +20,12 @@ import (
 
 func TestPVCPolicyReconciler_Reconcile(t *testing.T) {
 	scheme := runtime.NewScheme()
-	_ = pvcchonkerv1alpha1.AddToScheme(scheme)
-	_ = corev1.AddToScheme(scheme)
+	if err := pvcchonkerv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add pvcchonkerv1alpha1 to scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 to scheme: %v", err)
+	}
 
 	tests := []struct {
 		name          string
@@ -247,8 +251,12 @@ func TestPVCPolicyReconciler_Reconcile(t *testing.T) {
 
 func TestPVCPolicyReconciler_ErrorHandling(t *testing.T) {
 	scheme := runtime.NewScheme()
-	_ = pvcchonkerv1alpha1.AddToScheme(scheme)
-	_ = corev1.AddToScheme(scheme)
+	if err := pvcchonkerv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add pvcchonkerv1alpha1 to scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 to scheme: %v", err)
+	}
 
 	tests := []struct {
 		name        string
@@ -306,8 +314,12 @@ func TestPVCPolicyReconciler_ErrorHandling(t *testing.T) {
 
 func TestPVCPolicyReconciler_StatusUpdate(t *testing.T) {
 	scheme := runtime.NewScheme()
-	_ = pvcchonkerv1alpha1.AddToScheme(scheme)
-	_ = corev1.AddToScheme(scheme)
+	if err := pvcchonkerv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add pvcchonkerv1alpha1 to scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 to scheme: %v", err)
+	}
 
 	policy := &pvcchonkerv1alpha1.PVCPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -360,7 +372,7 @@ func (c *errorClient) Get(ctx context.Context, key client.ObjectKey, obj client.
 		}
 		return nil
 	}
-	return nil
+	return fmt.Errorf("unsupported object type: %T", obj)
 }
 
 func (c *errorClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {

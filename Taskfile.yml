@@ -20,10 +20,8 @@ tasks:
 
   run:local:
     desc: Run controller locally
+    deps: [go:fmt, go:generate, go:manifests]
     cmds:
-      - task: go:manifests
-      - task: go:generate
-      - task: go:fmt
       - go run ./cmd/main.go
 
   # Go tasks

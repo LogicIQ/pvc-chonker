@@ -51,7 +51,7 @@ func (r *PolicyResolver) ResolvePVCConfig(ctx context.Context, pvc *corev1.Persi
 	for _, policy := range policies.Items {
 		selector, err := metav1.LabelSelectorAsSelector(&policy.Spec.Selector)
 		if err != nil {
-			continue
+			return nil, err
 		}
 
 		if selector.Matches(labels.Set(pvc.Labels)) {

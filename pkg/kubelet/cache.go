@@ -165,6 +165,7 @@ func (mc *MetricsCollector) fetchFromCustomURL(ctx context.Context) ([]byte, err
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
+			metrics.RecordKubeletClientRequest("failed")
 		}
 	}()
 
@@ -205,7 +206,10 @@ func (cache *MetricsCache) GetAll() map[string]*VolumeMetrics {
 
 	result := make(map[string]*VolumeMetrics, len(cache.data))
 	for k, v := range cache.data {
-		result[k] = v
+		if v != nil {
+			copy := *v
+			result[k] = &copy
+		}
 	}
 	return result
 }

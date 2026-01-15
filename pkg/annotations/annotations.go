@@ -246,9 +246,12 @@ func parsePercentage(s string) (float64, error) {
 	return percent, nil
 }
 
-func NewGlobalConfig(threshold float64, increase string, cooldown time.Duration, minScaleUp resource.Quantity, maxSize resource.Quantity) *GlobalConfig {
+func NewGlobalConfig(threshold float64, inodesThreshold float64, increase string, cooldown time.Duration, minScaleUp resource.Quantity, maxSize resource.Quantity) *GlobalConfig {
 	if threshold <= 0 {
 		threshold = DefaultThreshold
+	}
+	if inodesThreshold <= 0 {
+		inodesThreshold = DefaultInodesThreshold
 	}
 	if increase == "" {
 		increase = DefaultIncrease
@@ -275,7 +278,7 @@ func NewGlobalConfig(threshold float64, increase string, cooldown time.Duration,
 
 	return &GlobalConfig{
 		Threshold:       threshold,
-		InodesThreshold: DefaultInodesThreshold,
+		InodesThreshold: inodesThreshold,
 		Increase:        increase,
 		Cooldown:        cooldown,
 		MinScaleUp:      minScaleUp,

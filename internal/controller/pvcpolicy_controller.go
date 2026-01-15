@@ -98,6 +98,8 @@ func (r *PVCPolicyReconciler) findPVCPoliciesForPVC(ctx context.Context, obj cli
 	// List all PVCPolicies in the same namespace
 	var policies pvcchonkerv1alpha1.PVCPolicyList
 	if err := r.List(ctx, &policies, client.InNamespace(pvc.Namespace)); err != nil {
+		log := log.FromContext(ctx)
+		log.Error(err, "Failed to list PVCPolicies for PVC", "pvc", pvc.Name, "namespace", pvc.Namespace)
 		return nil
 	}
 

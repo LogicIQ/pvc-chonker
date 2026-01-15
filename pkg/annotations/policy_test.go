@@ -199,7 +199,7 @@ func TestPolicyResolver_ResolvePVCConfig(t *testing.T) {
 							MatchLabels: map[string]string{"app": "database"},
 						},
 						Template: pvcchonkerv1alpha1.PVCPolicyTemplate{
-							Enabled: &[]bool{true}[0],
+							Enabled: ptr.To(true),
 						},
 					},
 				},
@@ -234,7 +234,7 @@ func TestPolicyResolver_ResolvePVCConfig(t *testing.T) {
 							MatchLabels: map[string]string{"app": "database"},
 						},
 						Template: pvcchonkerv1alpha1.PVCPolicyTemplate{
-							Enabled: &[]bool{true}[0],
+							Enabled: ptr.To(true),
 						},
 					},
 				},

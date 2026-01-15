@@ -76,32 +76,46 @@ func (mc *MetricsCollector) parseVolumeMetrics(metricsText string, namespacedNam
 		return nil, fmt.Errorf("volume metrics not found for %s/%s", namespacedName.Namespace, namespacedName.Name)
 	}
 
-	// Find inodes
+	// Find inodes (optional - not all filesystems expose inode metrics)
 	for _, match := range inodesRegex.FindAllStringSubmatch(metricsText, -1) {
 		if len(match) >= 4 && match[1] == namespacedName.Namespace && match[2] == namespacedName.Name {
-			if inodesTotal, err = strconv.ParseInt(match[3], 10, 64); err == nil {
-				break
+			if inodesTotal, err = strconv.ParseInt(match[3], 10, 64); err != nil {
+				return nil, fmt.Errorf("invalid inodes total value: %w", err)
 			}
+			break
 		}
 	}
 
 	// Find inodes used
 	for _, match := range inodesUsedRegex.FindAllStringSubmatch(metricsText, -1) {
 		if len(match) >= 4 && match[1] == namespacedName.Namespace && match[2] == namespacedName.Name {
-			if inodesUsed, err = strconv.ParseInt(match[3], 10, 64); err == nil {
-				break
+			if inodesUsed, err = strconv.ParseInt(match[3], 10, 64); err != nil {
+				return nil, fmt.Errorf("invalid inodes used value: %w", err)
 			}
+			break
 		}
 	}
 
-	used := capacity - available
-	usagePercent := float64(used) / float64(capacity) * 100
+	var used int64
+	var usagePercent float64
+	if available > capacity {
+		used = 0
+		usagePercent = 0.0
+	} else {
+		used = capacity - available
+		usagePercent = float64(used) / float64(capacity) * 100
+	}
 
 	var inodesFree int64
 	var inodesUsagePercent float64
 	if inodesTotal > 0 {
-		inodesFree = inodesTotal - inodesUsed
-		inodesUsagePercent = float64(inodesUsed) / float64(inodesTotal) * 100
+		if inodesUsed > inodesTotal {
+			inodesFree = 0
+			inodesUsagePercent = 100.0
+		} else {
+			inodesFree = inodesTotal - inodesUsed
+			inodesUsagePercent = float64(inodesUsed) / float64(inodesTotal) * 100
+		}
 	}
 
 	return &VolumeMetrics{

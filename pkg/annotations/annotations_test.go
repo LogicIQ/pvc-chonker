@@ -9,7 +9,7 @@ import (
 )
 
 func TestParsePVCAnnotations_InodesThreshold(t *testing.T) {
-	global := NewGlobalConfig(0, "", 0, resource.Quantity{}, resource.Quantity{})
+	global := NewGlobalConfig(0, 0, "", 0, resource.Quantity{}, resource.Quantity{})
 
 	tests := []struct {
 		name        string
@@ -71,7 +71,7 @@ func TestParsePVCAnnotations_InodesThreshold(t *testing.T) {
 }
 
 func TestParsePVCAnnotations_SeparateThresholds(t *testing.T) {
-	global := NewGlobalConfig(0, "", 0, resource.Quantity{}, resource.Quantity{})
+	global := NewGlobalConfig(0, 0, "", 0, resource.Quantity{}, resource.Quantity{})
 
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -98,7 +98,7 @@ func TestParsePVCAnnotations_SeparateThresholds(t *testing.T) {
 }
 
 func TestNewGlobalConfig_InodesThreshold(t *testing.T) {
-	config := NewGlobalConfig(0, "", 0, resource.Quantity{}, resource.Quantity{})
+	config := NewGlobalConfig(0, 0, "", 0, resource.Quantity{}, resource.Quantity{})
 
 	if config.InodesThreshold != DefaultInodesThreshold {
 		t.Errorf("expected InodesThreshold %f, got %f", DefaultInodesThreshold, config.InodesThreshold)
