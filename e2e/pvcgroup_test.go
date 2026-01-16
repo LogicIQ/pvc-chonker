@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/wait"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,7 +36,7 @@ func TestPVCGroupCoordination(t *testing.T) {
 	require.NoError(t, err, "Failed to apply PVCGroup fixture")
 
 	// Wait for resources to be created
-	time.Sleep(10 * time.Second)
+	waitForPVCsCreated(t, k8sClient, testNamespace, 2)
 
 	// Debug: Check if PVCs were created
 	var pvcList corev1.PersistentVolumeClaimList
@@ -58,7 +59,7 @@ func TestPVCGroupCoordination(t *testing.T) {
 	}, &pvcGroup))
 
 	// Wait for PVCGroup controller to process
-	time.Sleep(30 * time.Second)
+	waitForPVCGroupStatus(t, k8sClient, "test-pvcgroup", testNamespace)
 
 	// Debug: Check operator logs
 	logs := getOperatorLogs(t)
@@ -81,7 +82,7 @@ func TestPVCGroupCoordination(t *testing.T) {
 			t.Logf("Update attempt %d failed (expected due to race condition): %v", i+1, err)
 			continue
 		}
-		time.Sleep(5 * time.Second)
+		waitForPVCGroupStatus(t, k8sClient, "test-pvcgroup", testNamespace)
 		
 		// Check status after each trigger
 		require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{
@@ -199,7 +200,7 @@ func TestPVCGroupWebhook(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, pvcGroup))
 
 	// Wait for PVCGroup to be processed
-	time.Sleep(5 * time.Second)
+	waitForPVCGroupStatus(t, k8sClient, "webhook-test-group", ns.Name)
 
 	// Create PVC that should match the group
 	pvc := &corev1.PersistentVolumeClaim{
@@ -225,7 +226,7 @@ func TestPVCGroupWebhook(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, pvc))
 
 	// Wait for potential webhook processing
-	time.Sleep(5 * time.Second)
+	waitForPVCCreated(t, k8sClient, pvc.Name, pvc.Namespace)
 
 	// Check that webhook applied group annotations
 	var createdPVC corev1.PersistentVolumeClaim
@@ -316,7 +317,7 @@ func TestPVCGroupWebhookE2E(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, pvc))
 
 	// Wait for potential webhook processing
-	time.Sleep(5 * time.Second)
+	waitForPVCCreated(t, k8sClient, pvc.Name, pvc.Namespace)
 
 	// Check that webhook applied group annotations (if webhook is enabled)
 	var createdPVC corev1.PersistentVolumeClaim
@@ -345,4 +346,49 @@ func boolPtr(b bool) *bool {
 func executeBash(command string) error {
 	cmd := exec.Command("bash", "-c", command)
 	return cmd.Run()
+}
+
+// waitForPVCsCreated waits for at least minCount PVCs to be created in the namespace
+func waitForPVCsCreated(t *testing.T, k8sClient client.Client, namespace string, minCount int) {
+	ctx := context.Background()
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
+		var pvcList corev1.PersistentVolumeClaimList
+		if err := k8sClient.List(ctx, &pvcList, &client.ListOptions{Namespace: namespace}); err != nil {
+			return false, nil
+		}
+		return len(pvcList.Items) >= minCount, nil
+	})
+	if err != nil {
+		t.Logf("Warning: PVCs not created in time: %v", err)
+	}
+}
+
+// waitForPVCGroupStatus waits for PVCGroup status to be updated
+func waitForPVCGroupStatus(t *testing.T, k8sClient client.Client, name, namespace string) {
+	ctx := context.Background()
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
+		var pvcGroup pvcchonkerv1alpha1.PVCGroup
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &pvcGroup); err != nil {
+			return false, nil
+		}
+		return pvcGroup.Status.LastUpdated != nil, nil
+	})
+	if err != nil {
+		t.Logf("Warning: PVCGroup status not updated in time: %v", err)
+	}
+}
+
+// waitForPVCCreated waits for a PVC to be created and available
+func waitForPVCCreated(t *testing.T, k8sClient client.Client, name, namespace string) {
+	ctx := context.Background()
+	err := wait.PollUntilContextTimeout(ctx, 1*time.Second, 15*time.Second, true, func(ctx context.Context) (bool, error) {
+		var pvc corev1.PersistentVolumeClaim
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &pvc); err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		t.Logf("Warning: PVC not created in time: %v", err)
+	}
 }

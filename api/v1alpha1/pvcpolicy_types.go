@@ -25,17 +25,17 @@ type PVCPolicyTemplate struct {
 
 	// Threshold is the storage usage percentage that triggers expansion
 	// +optional
-	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]*)?%?)$`
+	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]*)?)%$`
 	Threshold *string `json:"threshold,omitempty"`
 
 	// InodesThreshold is the inode usage percentage that triggers expansion
 	// +optional
-	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]*)?%?)$`
+	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]*)?)%$`
 	InodesThreshold *string `json:"inodesThreshold,omitempty"`
 
 	// Increase specifies the expansion amount (percentage or absolute)
 	// +optional
-	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]*)?%?|[0-9]+(\.[0-9]*)?[KMGTPE]i?)$`
+	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]+)?%|[0-9]+(\.[0-9]+)?[KMGTPE]i)$`
 	Increase *string `json:"increase,omitempty"`
 
 	// MaxSize is the maximum size limit for the PVC

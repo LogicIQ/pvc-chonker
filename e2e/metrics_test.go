@@ -31,8 +31,8 @@ func TestKubeletMetrics(t *testing.T) {
 	// Wait for test pod to be running and using the volume
 	waitForPod(t, "test-pod", testNamespace)
 	
-	// Give some time for volume metrics to be populated
-	time.Sleep(10 * time.Second)
+	// Wait for volume metrics to be populated
+	waitForVolumeMetrics(t, nodeName)
 	
 	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil || len(nodes.Items) == 0 {
@@ -109,4 +109,25 @@ func TestOperatorLogs(t *testing.T) {
 	}
 	
 	t.Log("Operator logs test passed")
+}
+
+// waitForVolumeMetrics waits for volume metrics to be available
+func waitForVolumeMetrics(t *testing.T, nodeName string) {
+	ctx := context.Background()
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
+		metricsPath := fmt.Sprintf("/api/v1/nodes/%s/proxy/metrics", nodeName)
+		req := clientset.CoreV1().RESTClient().Get().AbsPath(metricsPath)
+		result := req.Do(ctx)
+		if result.Error() != nil {
+			return false, nil
+		}
+		metricsData, err := result.Raw()
+		if err != nil {
+			return false, nil
+		}
+		return strings.Contains(string(metricsData), "kubelet_volume_stats_capacity_bytes"), nil
+	})
+	if err != nil {
+		t.Logf("Warning: Volume metrics not available in time: %v", err)
+	}
 }

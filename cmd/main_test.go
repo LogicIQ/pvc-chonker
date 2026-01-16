@@ -23,10 +23,10 @@ func TestVersionDefaults(t *testing.T) {
 	}
 
 	// Verify default values are reasonable
-	if version != "dev" && version == "" {
+	if version != "dev" && version != "" {
 		t.Logf("version is set to: %s (not default 'dev')", version)
 	}
-	if gitHash != "unknown" && gitHash == "" {
+	if gitHash != "unknown" && gitHash != "" {
 		t.Logf("gitHash is set to: %s (not default 'unknown')", gitHash)
 	}
 }

@@ -52,7 +52,8 @@ func (r *PVCGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	var pvcGroup pvcchonkerv1alpha1.PVCGroup
 	if err := r.Get(ctx, req.NamespacedName, &pvcGroup); err != nil {
 		if client.IgnoreNotFound(err) == nil {
-			// Resource was deleted, nothing to do
+			// Resource was deleted, clean up mutex after unlock to prevent memory leak
+			defer r.statusLocks.Delete(lockKey)
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Failed to get PVCGroup", "namespacedName", req.NamespacedName)

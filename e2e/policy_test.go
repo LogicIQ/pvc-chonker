@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/wait"
 	corev1 "k8s.io/api/core/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/assert"
@@ -55,7 +56,7 @@ func TestPVCPolicyBasic(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, pvc))
 	
 	// Wait for policy to be processed and check if PVC gets policy settings
-	time.Sleep(15 * time.Second)
+	waitForPolicyProcessed(t, k8sClient, "test-policy", testNamespace)
 	
 	// Check if the PVC was updated with policy settings
 	var updatedPVC corev1.PersistentVolumeClaim
@@ -146,7 +147,7 @@ func TestPVCPolicyOverride(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, pvc))
 	
 	// Wait for processing
-	time.Sleep(15 * time.Second)
+	waitForPolicyProcessed(t, k8sClient, "test-policy", testNamespace)
 	
 	// Verify the PVC has the override annotations
 	var updatedPVC corev1.PersistentVolumeClaim
@@ -182,3 +183,17 @@ func TestPVCPolicyOverride(t *testing.T) {
 	t.Log("PVCPolicy override test passed")
 }
 
+// waitForPolicyProcessed waits for PVCPolicy to be processed and update its status
+func waitForPolicyProcessed(t *testing.T, k8sClient client.Client, name, namespace string) {
+	ctx := context.Background()
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
+		var policy pvcchonkerv1alpha1.PVCPolicy
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &policy); err != nil {
+			return false, nil
+		}
+		return policy.Status.MatchedPVCs > 0, nil
+	})
+	if err != nil {
+		t.Logf("Warning: PVCPolicy not processed in time: %v", err)
+	}
+}

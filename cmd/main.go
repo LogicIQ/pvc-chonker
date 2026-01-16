@@ -90,8 +90,23 @@ func run(cmd *cobra.Command, args []string) {
 	logLevel := viper.GetString("log-level")
 	dryRun := viper.GetBool("dry-run")
 
+	level := zap.NewAtomicLevel()
+	switch logLevel {
+	case "debug":
+		level.SetLevel(zap.DebugLevel)
+	case "info":
+		level.SetLevel(zap.InfoLevel)
+	case "warn":
+		level.SetLevel(zap.WarnLevel)
+	case "error":
+		level.SetLevel(zap.ErrorLevel)
+	default:
+		level.SetLevel(zap.InfoLevel)
+	}
+
 	opts := zap.Options{
 		Development: logFormat == "console",
+		Level:       level,
 	}
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -101,9 +116,9 @@ func run(cmd *cobra.Command, args []string) {
 		setupLog.Info("Starting in DRY RUN mode - no PVC modifications will be made")
 	}
 
-	cfg := ctrl.GetConfigOrDie()
-	if cfg == nil {
-		setupLog.Error(nil, "unable to get kubernetes config")
+	cfg, err := ctrl.GetConfig()
+	if err != nil {
+		setupLog.Error(err, "unable to get kubernetes config")
 		os.Exit(1)
 	}
 

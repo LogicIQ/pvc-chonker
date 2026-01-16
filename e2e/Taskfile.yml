@@ -39,44 +39,9 @@ tasks:
     desc: Deploy operator to cluster
     deps: [setup]
     cmds:
-      - echo "Building and deploying operator..."
-      - cd .. && task docker:build
-      - minikube image load {{.IMG}} -p {{.CLUSTER_NAME}}
-      - kubectl apply -R -f ../config/
-      - echo "Applying webhook configuration..."
-      - kubectl apply -f ../config/webhook/
-      - sleep 5
-      - |
-        kubectl patch deployment controller-manager -n pvc-chonker-system -p '{
-          "spec": {
-            "template": {
-              "spec": {
-                "containers": [{
-                  "name": "manager",
-                  "imagePullPolicy": "Never",
-                  "env": [{
-                    "name": "PVC_CHONKER_ENABLE_WEBHOOK",
-                    "value": "true"
-                  }, {
-                    "name": "PVC_CHONKER_WATCH_INTERVAL",
-                    "value": "15s"
-                  }]
-                }]
-              }
-            }
-          }
-        }'
-      - kubectl rollout restart deployment controller-manager -n pvc-chonker-system
-      - sleep 10
-      - kubectl get pods -n pvc-chonker-system
-      - kubectl wait --for=condition=Available deployment/controller-manager -n pvc-chonker-system --timeout=180s
-      - echo "Waiting for webhook server to be ready..."
-      - sleep 10
-      - kubectl apply -f fixtures/test-pvc.yaml -n pvc-chonker-system
-      - kubectl delete pod test-pod -n pvc-chonker-system --ignore-not-found=true
-      - kubectl apply -f fixtures/test-pod.yaml -n pvc-chonker-system
-      - kubectl wait --for=condition=Ready pod test-pod -n pvc-chonker-system --timeout=60s
-      - echo "Operator deployed and test workload ready"
+      - task: _deploy-operator
+        vars:
+          WATCH_INTERVAL: "15s"
 
   test:
     desc: Execute automated E2E tests
@@ -99,12 +64,20 @@ tasks:
     desc: Deploy operator with webhook enabled
     deps: [setup]
     cmds:
-      - echo "Building and deploying operator with webhook..."
+      - task: _deploy-operator
+        vars:
+          WATCH_INTERVAL: "5s"
+
+  _deploy-operator:
+    internal: true
+    cmds:
+      - echo "Building and deploying operator..."
       - cd .. && task docker:build
       - minikube image load {{.IMG}} -p {{.CLUSTER_NAME}}
       - kubectl apply -R -f ../config/
       - echo "Applying webhook configuration..."
       - kubectl apply -f ../config/webhook/
+      - sleep 5
       - |
         kubectl patch deployment controller-manager -n pvc-chonker-system -p '{
           "spec": {
@@ -118,7 +91,7 @@ tasks:
                     "value": "true"
                   }, {
                     "name": "PVC_CHONKER_WATCH_INTERVAL",
-                    "value": "5s"
+                    "value": "{{.WATCH_INTERVAL}}"
                   }]
                 }]
               }
@@ -126,8 +99,16 @@ tasks:
           }
         }'
       - kubectl rollout restart deployment controller-manager -n pvc-chonker-system
+      - sleep 10
+      - kubectl get pods -n pvc-chonker-system
       - kubectl wait --for=condition=Available deployment/controller-manager -n pvc-chonker-system --timeout=180s
-      - echo "Operator with webhook deployed"
+      - echo "Waiting for webhook server to be ready..."
+      - sleep 10
+      - kubectl apply -f fixtures/test-pvc.yaml -n pvc-chonker-system
+      - kubectl delete pod test-pod -n pvc-chonker-system --ignore-not-found=true
+      - kubectl apply -f fixtures/test-pod.yaml -n pvc-chonker-system
+      - kubectl wait --for=condition=Ready pod test-pod -n pvc-chonker-system --timeout=60s
+      - echo "Operator deployed and test workload ready"
 
   verify-metrics:
     desc: Verify kubelet volume metrics are available

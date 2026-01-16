@@ -9,7 +9,10 @@ SECRET_NAME="pvc-chonker-webhook-server-cert"
 echo "Creating webhook certificates for namespace: $NAMESPACE"
 
 # Create namespace if it doesn't exist
-kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+if ! kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -; then
+    echo "Error: Failed to create namespace $NAMESPACE"
+    exit 1
+fi
 
 # Generate CA private key
 if ! openssl genrsa -out ca.key 2048; then
@@ -57,11 +60,15 @@ EOF
 fi
 
 # Create the secret
-kubectl create secret tls $SECRET_NAME \
+if ! kubectl create secret tls $SECRET_NAME \
   --cert=tls.crt \
   --key=tls.key \
   --namespace=$NAMESPACE \
-  --dry-run=client -o yaml | kubectl apply -f -
+  --dry-run=client -o yaml | kubectl apply -f -; then
+    echo "Error: Failed to create secret $SECRET_NAME"
+    rm -f ca.key ca.crt ca.srl tls.key tls.crt server.csr
+    exit 1
+fi
 
 # Add CA cert to the secret
 if ! kubectl patch secret $SECRET_NAME -n $NAMESPACE -p "{\"data\":{\"ca.crt\":\"$(base64 -w 0 < ca.crt)\"}}"; then
@@ -97,6 +104,11 @@ webhooks:
   sideEffects: None
   failurePolicy: Fail
 EOF
+
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to create MutatingAdmissionWebhook"
+    exit 1
+fi
 
 # Cleanup temp files
 rm -vf ca.key ca.crt ca.srl tls.key tls.crt server.csr

@@ -56,7 +56,6 @@ func getK8sClient(t *testing.T) client.Client {
 
 func generateRandomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	rand.Seed(time.Now().UnixNano())
 	b := make([]byte, length)
 	for i := range b {
 		b[i] = charset[rand.Intn(len(charset))]
