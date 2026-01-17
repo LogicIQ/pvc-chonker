@@ -38,7 +38,6 @@ type PersistentVolumeClaimReconciler struct {
 	EventRecorder    record.EventRecorder
 	DryRun           bool
 	MaxParallel      int
-	metricsCache     *kubelet.MetricsCache
 	storageCache     *cache.StorageClassCache
 	policyResolver   *annotations.PolicyResolver
 }
@@ -50,6 +49,11 @@ func (r *PersistentVolumeClaimReconciler) Start(ctx context.Context) error {
 	// Initialize storage class cache
 	r.storageCache = cache.NewStorageClassCache()
 	r.policyResolver = annotations.NewPolicyResolver(r.Client)
+
+	// Set default MaxParallel if not configured
+	if r.MaxParallel <= 0 {
+		r.MaxParallel = 4
+	}
 
 	ticker := time.NewTicker(r.WatchInterval)
 	defer ticker.Stop()
@@ -126,13 +130,8 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 		metrics.ReconciliationStatus.WithLabelValues("success").Set(0)
 		return
 	}
-	r.metricsCache = metricsCache
 
 	metrics.ManagedPVCsTotal.Set(float64(len(managedPVCs)))
-
-	if r.MaxParallel <= 0 {
-		r.MaxParallel = 4
-	}
 
 	semaphore := make(chan struct{}, r.MaxParallel)
 	var wg sync.WaitGroup
@@ -143,7 +142,7 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 			defer wg.Done()
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
-			r.reconcilePVC(ctx, &pvc)
+			r.reconcilePVC(ctx, &pvc, metricsCache)
 		}(pvcs.Items[i])
 	}
 
@@ -156,7 +155,7 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	log.Info("Completed reconciliation cycle", "totalPVCs", len(pvcs.Items), "managedPVCs", len(managedPVCs), "duration", duration, "nextCycle", startTime.Add(r.WatchInterval).Format(time.RFC3339))
 }
 
-func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim) {
+func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim, metricsCache *kubelet.MetricsCache) {
 	log := log.FromContext(ctx).WithValues("pvc", pvc.Name, "namespace", pvc.Namespace)
 
 	log.V(1).Info("Processing PVC", "phase", pvc.Status.Phase, "size", pvc.Status.Capacity[corev1.ResourceStorage])
@@ -191,9 +190,9 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	}
 
 	namespacedName := types.NamespacedName{Namespace: pvc.Namespace, Name: pvc.Name}
-	volumeMetrics, exists := r.metricsCache.Get(namespacedName)
+	volumeMetrics, exists := metricsCache.Get(namespacedName)
 	if !exists {
-		log.V(1).Info("Volume metrics not found in cache", "availableMetrics", len(r.metricsCache.GetAll()))
+		log.V(1).Info("Volume metrics not found in cache", "availableMetrics", len(metricsCache.GetAll()))
 		metrics.RecordFailedResize(pvc.Name, pvc.Namespace, "metrics_not_found")
 		return
 	}
@@ -205,10 +204,11 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	metrics.UpdatePVCInodesMetrics(pvc.Name, pvc.Namespace, volumeMetrics.InodesUsagePercent, volumeMetrics.InodesTotal)
 
 	thresholdReached := volumeMetrics.UsagePercent >= config.Threshold
+	var fsType string
 	if volumeMetrics.InodesTotal > 0 {
 		thresholdReached = thresholdReached || volumeMetrics.InodesUsagePercent >= config.InodesThreshold
 		if volumeMetrics.InodesUsagePercent >= config.InodesThreshold {
-			fsType := r.getFilesystemType(ctx, pvc)
+			fsType = r.getFilesystemType(ctx, pvc)
 			if fsType == "ext3" || fsType == "ext4" {
 				log.Info("Inode threshold reached on fixed-inode filesystem - expansion will not resolve inode pressure",
 					"filesystem", fsType,
@@ -247,7 +247,9 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	newSize := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
 	if volumeMetrics.InodesTotal > 0 {
 		if volumeMetrics.InodesUsagePercent >= config.InodesThreshold {
-			fsType := r.getFilesystemType(ctx, pvc)
+			if fsType == "" {
+				fsType = r.getFilesystemType(ctx, pvc)
+			}
 			if fsType == "ext3" || fsType == "ext4" {
 				r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, "ExpandedInodePressure",
 					"PVC expanded from %s to %s due to inode pressure (storage: %.1f%%, inodes: %.1f%%) - WARNING: %s filesystem has fixed inode count, expansion will not resolve inode pressure",
@@ -309,10 +311,13 @@ func (r *PersistentVolumeClaimReconciler) getFilesystemType(ctx context.Context,
 		return "unknown"
 	}
 
+	scName := *pvc.Spec.StorageClassName
+
+	// Try to get from cache first to avoid redundant API calls
 	var sc storagev1.StorageClass
-	if err := r.Get(ctx, types.NamespacedName{Name: *pvc.Spec.StorageClassName}, &sc); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Name: scName}, &sc); err != nil {
 		log := log.FromContext(ctx)
-		log.Error(err, "Failed to get storage class for filesystem type detection", "storageClass", *pvc.Spec.StorageClassName)
+		log.Error(err, "Failed to get storage class for filesystem type detection", "storageClass", scName)
 		metrics.RecordKubernetesClientRequest("get_storageclass_fstype", "failed")
 		return "unknown"
 	}

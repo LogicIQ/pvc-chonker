@@ -71,13 +71,13 @@ if ! kubectl create secret tls $SECRET_NAME \
 fi
 
 # Add CA cert to the secret
-if ! kubectl patch secret $SECRET_NAME -n $NAMESPACE -p "{\"data\":{\"ca.crt\":\"$(base64 -w 0 < ca.crt)\"}}"; then
+if ! kubectl patch secret $SECRET_NAME -n $NAMESPACE -p "{\"data\":{\"ca.crt\":\"$(base64 < ca.crt | tr -d '\n')\"}}"; then
     echo "Error: Failed to patch secret with CA certificate"
     exit 1
 fi
 
 # Create mutating webhook configuration
-if ! CA_BUNDLE=$(base64 -w 0 < ca.crt); then
+if ! CA_BUNDLE=$(base64 < ca.crt | tr -d '\n'); then
     echo "Error: Failed to encode CA certificate"
     exit 1
 fi

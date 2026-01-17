@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -165,6 +166,7 @@ func (mc *MetricsCollector) fetchFromCustomURL(ctx context.Context) ([]byte, err
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close response body: %v", closeErr)
 			metrics.RecordKubeletClientRequest("failed")
 		}
 	}()
@@ -255,10 +257,10 @@ func (cache *MetricsCache) setInodesUsed(pvcName types.NamespacedName, value int
 }
 
 func (cache *MetricsCache) calculateUsagePercentages() {
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
+	cache.mutex.RLock()
+	defer cache.mutex.RUnlock()
 
-	for key, vm := range cache.data {
+	for _, vm := range cache.data {
 		if vm.CapacityBytes > 0 {
 			vm.UsedBytes = vm.CapacityBytes - vm.AvailableBytes
 			vm.UsagePercent = float64(vm.UsedBytes) / float64(vm.CapacityBytes) * 100
@@ -267,6 +269,5 @@ func (cache *MetricsCache) calculateUsagePercentages() {
 			vm.InodesFree = vm.InodesTotal - vm.InodesUsed
 			vm.InodesUsagePercent = float64(vm.InodesUsed) / float64(vm.InodesTotal) * 100
 		}
-		cache.data[key] = vm
 	}
 }

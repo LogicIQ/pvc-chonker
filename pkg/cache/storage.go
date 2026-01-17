@@ -31,7 +31,5 @@ func (c *StorageClassCache) Set(name string, expandable bool) {
 func (c *StorageClassCache) Clear() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	for k := range c.cache {
-		delete(c.cache, k)
-	}
+	c.cache = make(map[string]bool)
 }

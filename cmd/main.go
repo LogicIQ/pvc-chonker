@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	"go.uber.org/zap/zapcore"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -90,18 +91,18 @@ func run(cmd *cobra.Command, args []string) {
 	logLevel := viper.GetString("log-level")
 	dryRun := viper.GetBool("dry-run")
 
-	level := zap.NewAtomicLevel()
+	var level zapcore.Level
 	switch logLevel {
 	case "debug":
-		level.SetLevel(zap.DebugLevel)
+		level = zapcore.DebugLevel
 	case "info":
-		level.SetLevel(zap.InfoLevel)
+		level = zapcore.InfoLevel
 	case "warn":
-		level.SetLevel(zap.WarnLevel)
+		level = zapcore.WarnLevel
 	case "error":
-		level.SetLevel(zap.ErrorLevel)
+		level = zapcore.ErrorLevel
 	default:
-		level.SetLevel(zap.InfoLevel)
+		level = zapcore.InfoLevel
 	}
 
 	opts := zap.Options{

@@ -42,7 +42,11 @@ func (r *PVCGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Get or create a mutex for this specific PVCGroup
 	lockKey := req.NamespacedName.String()
 	mutexInterface, _ := r.statusLocks.LoadOrStore(lockKey, &sync.Mutex{})
-	mutex := mutexInterface.(*sync.Mutex)
+	mutex, ok := mutexInterface.(*sync.Mutex)
+	if !ok {
+		logger.Error(nil, "Invalid mutex type in statusLocks", "lockKey", lockKey)
+		return ctrl.Result{}, fmt.Errorf("invalid mutex type for key %s", lockKey)
+	}
 
 	// Lock to prevent concurrent reconciliation of the same PVCGroup
 	mutex.Lock()

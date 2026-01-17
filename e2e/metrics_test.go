@@ -31,15 +31,15 @@ func TestKubeletMetrics(t *testing.T) {
 	// Wait for test pod to be running and using the volume
 	waitForPod(t, "test-pod", testNamespace)
 	
-	// Wait for volume metrics to be populated
-	waitForVolumeMetrics(t, nodeName)
-	
 	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil || len(nodes.Items) == 0 {
 		t.Fatalf("Failed to get nodes: %v", err)
 	}
 	nodeName := nodes.Items[0].Name
 	t.Logf("Using node: %s", nodeName)
+	
+	// Wait for volume metrics to be populated
+	waitForVolumeMetrics(t, nodeName)
 	
 	metricsPath := fmt.Sprintf("/api/v1/nodes/%s/proxy/metrics", nodeName)
 	req := clientset.CoreV1().RESTClient().Get().AbsPath(metricsPath)

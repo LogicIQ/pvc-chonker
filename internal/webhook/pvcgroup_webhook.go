@@ -79,48 +79,17 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 		})
 	}
 
-	template := pvcGroup.Spec.Template
+	// Get template annotations to apply
+	templateAnnotations := getTemplateAnnotations(pvcGroup.Spec.Template, pvc.Annotations)
 
-	// Always add template annotations if they are specified in the template
-	// This ensures PVCs get the group's configuration
-	if template.Threshold != nil {
-		if _, exists := pvc.Annotations["pvc-chonker.io/threshold"]; !exists {
-			patches = append(patches, map[string]interface{}{
-				"op":    "add",
-				"path":  "/metadata/annotations/pvc-chonker.io~1threshold",
-				"value": *template.Threshold,
-			})
-		}
-	}
-
-	if template.Increase != nil {
-		if _, exists := pvc.Annotations["pvc-chonker.io/increase"]; !exists {
-			patches = append(patches, map[string]interface{}{
-				"op":    "add",
-				"path":  "/metadata/annotations/pvc-chonker.io~1increase",
-				"value": *template.Increase,
-			})
-		}
-	}
-
-	if template.MaxSize != nil {
-		if _, exists := pvc.Annotations["pvc-chonker.io/max-size"]; !exists {
-			patches = append(patches, map[string]interface{}{
-				"op":    "add",
-				"path":  "/metadata/annotations/pvc-chonker.io~1max-size",
-				"value": template.MaxSize.String(),
-			})
-		}
-	}
-
-	if template.Cooldown != nil {
-		if _, exists := pvc.Annotations["pvc-chonker.io/cooldown"]; !exists {
-			patches = append(patches, map[string]interface{}{
-				"op":    "add",
-				"path":  "/metadata/annotations/pvc-chonker.io~1cooldown",
-				"value": template.Cooldown.Duration.String(),
-			})
-		}
+	// Create JSON patches for missing annotations
+	for key, value := range templateAnnotations {
+		escapedKey := "pvc-chonker.io~1" + key[len("pvc-chonker.io/"):]
+		patches = append(patches, map[string]interface{}{
+			"op":    "add",
+			"path":  "/metadata/annotations/" + escapedKey,
+			"value": value,
+		})
 	}
 
 	if len(patches) == 0 {
@@ -148,31 +117,36 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 	}
 }
 
-// applyTemplateToAnnotations applies PVCGroup template settings to PVC annotations
-func applyTemplateToAnnotations(annotations map[string]string, template pvcchonkerv1alpha1.PVCGroupTemplate) {
+// getTemplateAnnotations returns a map of annotations to apply from the template
+// Only returns annotations that don't already exist in the provided annotations map
+func getTemplateAnnotations(template pvcchonkerv1alpha1.PVCGroupTemplate, existing map[string]string) map[string]string {
+	result := make(map[string]string)
+
 	if template.Threshold != nil {
-		if _, exists := annotations["pvc-chonker.io/threshold"]; !exists {
-			annotations["pvc-chonker.io/threshold"] = *template.Threshold
+		if _, exists := existing["pvc-chonker.io/threshold"]; !exists {
+			result["pvc-chonker.io/threshold"] = *template.Threshold
 		}
 	}
 
 	if template.Increase != nil {
-		if _, exists := annotations["pvc-chonker.io/increase"]; !exists {
-			annotations["pvc-chonker.io/increase"] = *template.Increase
+		if _, exists := existing["pvc-chonker.io/increase"]; !exists {
+			result["pvc-chonker.io/increase"] = *template.Increase
 		}
 	}
 
 	if template.MaxSize != nil {
-		if _, exists := annotations["pvc-chonker.io/max-size"]; !exists {
-			annotations["pvc-chonker.io/max-size"] = template.MaxSize.String()
+		if _, exists := existing["pvc-chonker.io/max-size"]; !exists {
+			result["pvc-chonker.io/max-size"] = template.MaxSize.String()
 		}
 	}
 
 	if template.Cooldown != nil {
-		if _, exists := annotations["pvc-chonker.io/cooldown"]; !exists {
-			annotations["pvc-chonker.io/cooldown"] = template.Cooldown.Duration.String()
+		if _, exists := existing["pvc-chonker.io/cooldown"]; !exists {
+			result["pvc-chonker.io/cooldown"] = template.Cooldown.Duration.String()
 		}
 	}
+
+	return result
 }
 
 // Default implements the admission.CustomDefaulter interface
@@ -208,8 +182,10 @@ func (m *PVCGroupMutator) Default(ctx context.Context, obj runtime.Object) error
 	}
 
 	// Apply group template settings as annotations if not already present
-	// (annotations are guaranteed to exist at this point)
-	applyTemplateToAnnotations(pvc.Annotations, pvcGroup.Spec.Template)
+	templateAnnotations := getTemplateAnnotations(pvcGroup.Spec.Template, pvc.Annotations)
+	for key, value := range templateAnnotations {
+		pvc.Annotations[key] = value
+	}
 
 	logger.Info("Applied PVCGroup template to PVC", "pvc", pvc.Name, "group", groupName)
 	return nil

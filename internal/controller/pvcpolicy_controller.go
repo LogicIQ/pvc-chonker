@@ -46,6 +46,8 @@ func (r *PVCPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	var policy pvcchonkerv1alpha1.PVCPolicy
 	if err := r.Get(ctx, req.NamespacedName, &policy); err != nil {
+		// Clean up mutex when policy is deleted or not found
+		r.statusLocks.Delete(lockKey)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -108,6 +110,8 @@ func (r *PVCPolicyReconciler) findPVCPoliciesForPVC(ctx context.Context, obj cli
 		// Check if this PVC matches the policy selector
 		selector, err := metav1.LabelSelectorAsSelector(&policy.Spec.Selector)
 		if err != nil {
+			log := log.FromContext(ctx)
+			log.Error(err, "Invalid label selector in PVCPolicy", "policy", policy.Name, "namespace", policy.Namespace)
 			continue
 		}
 		if selector.Matches(labels.Set(pvc.Labels)) {

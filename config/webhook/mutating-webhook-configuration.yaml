@@ -15,6 +15,6 @@ webhooks:
     apiGroups: [""]
     apiVersions: ["v1"]
     resources: ["persistentvolumeclaims"]
-  admissionReviewVersions: ["v1"]  # v1beta1 removed for future Kubernetes compatibility
+  admissionReviewVersions: ["v1"]
   sideEffects: None
-  failurePolicy: Fail  # Fail requests if webhook is unavailable to prevent misconfiguration
+  failurePolicy: Ignore  # Allow PVC operations to continue if webhook is unavailable

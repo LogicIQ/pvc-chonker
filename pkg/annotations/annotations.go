@@ -174,9 +174,6 @@ func (c *PVCConfig) CalculateNewSize(currentSize resource.Quantity) (resource.Qu
 	roundedBytes := ((newBytes + gibBoundary - 1) / gibBoundary) * gibBoundary
 
 	newSize := resource.NewQuantity(roundedBytes, resource.BinarySI)
-	if newSize == nil {
-		return resource.Quantity{}, fmt.Errorf("failed to create new quantity")
-	}
 	return *newSize, nil
 }
 

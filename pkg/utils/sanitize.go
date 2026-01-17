@@ -3,6 +3,7 @@ package utils
 import (
 	"net/url"
 	"strings"
+	"unicode"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -11,7 +12,7 @@ import (
 func SanitizeForLogging(input string) string {
 	var result strings.Builder
 	for _, r := range input {
-		if r >= 32 && r <= 126 {
+		if unicode.IsPrint(r) && r != '\n' && r != '\r' && r != '\x1b' {
 			result.WriteRune(r)
 		}
 	}
@@ -31,6 +32,7 @@ func SanitizeURL(rawURL string) string {
 	}
 
 	parsedURL.User = nil
+	parsedURL.RawQuery = ""
 	return parsedURL.String()
 }
 

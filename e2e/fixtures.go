@@ -6,6 +6,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func stringPtr(s string) *string {
+	return &s
+}
+
 func createPVC(name, size string, annotations map[string]string) (*corev1.PersistentVolumeClaim, error) {
 	storageQty, err := resource.ParseQuantity(size)
 	if err != nil {
