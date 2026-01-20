@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,10 +40,47 @@ func NewMetricsCache() *MetricsCache {
 	}
 }
 
-func NewMetricsCollector(kubeletURL string) *MetricsCollector {
+func NewMetricsCollector(kubeletURL string) (*MetricsCollector, error) {
+	if kubeletURL != "" {
+		if err := validateKubeletURL(kubeletURL); err != nil {
+			return nil, fmt.Errorf("invalid kubelet URL: %w", err)
+		}
+	}
 	return &MetricsCollector{
 		kubeletURL: kubeletURL,
+	}, nil
+}
+
+func validateKubeletURL(kubeletURL string) error {
+	parsed, err := url.Parse(kubeletURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
 	}
+
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("only http and https schemes are allowed")
+	}
+
+	host := parsed.Hostname()
+	if host == "" {
+		return fmt.Errorf("URL must have a valid host")
+	}
+
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+			return fmt.Errorf("private, loopback, and link-local IPs are not allowed")
+		}
+	}
+
+	blocked := []string{"169.254.169.254", "metadata.google.internal", "localhost"}
+	for _, b := range blocked {
+		if strings.Contains(strings.ToLower(host), b) {
+			return fmt.Errorf("blocked host: %s", host)
+		}
+	}
+
+	return nil
 }
 
 func (mc *MetricsCollector) SetClient(client client.Client, clientset *kubernetes.Clientset) {
@@ -257,8 +297,8 @@ func (cache *MetricsCache) setInodesUsed(pvcName types.NamespacedName, value int
 }
 
 func (cache *MetricsCache) calculateUsagePercentages() {
-	cache.mutex.RLock()
-	defer cache.mutex.RUnlock()
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
 
 	for _, vm := range cache.data {
 		if vm.CapacityBytes > 0 {

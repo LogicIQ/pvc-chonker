@@ -345,7 +345,11 @@ func boolPtr(b bool) *bool {
 
 func executeBash(command string) error {
 	cmd := exec.Command("bash", "-c", command)
-	return cmd.Run()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("command failed: %w, output: %s", err, string(output))
+	}
+	return nil
 }
 
 // waitForPVCsCreated waits for at least minCount PVCs to be created in the namespace

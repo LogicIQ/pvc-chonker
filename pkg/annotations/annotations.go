@@ -174,6 +174,9 @@ func (c *PVCConfig) CalculateNewSize(currentSize resource.Quantity) (resource.Qu
 	roundedBytes := ((newBytes + gibBoundary - 1) / gibBoundary) * gibBoundary
 
 	newSize := resource.NewQuantity(roundedBytes, resource.BinarySI)
+	if newSize == nil {
+		return resource.Quantity{}, fmt.Errorf("failed to create new size quantity")
+	}
 	return *newSize, nil
 }
 
@@ -195,6 +198,9 @@ func (c *PVCConfig) ExceedsMaxSize(newSize resource.Quantity) bool {
 }
 
 func IsPvcResizing(pvc *corev1.PersistentVolumeClaim) bool {
+	if pvc == nil {
+		return false
+	}
 	for _, condition := range pvc.Status.Conditions {
 		if condition.Type == corev1.PersistentVolumeClaimResizing ||
 			condition.Type == corev1.PersistentVolumeClaimFileSystemResizePending {

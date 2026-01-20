@@ -45,11 +45,16 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 	}
 
 	// Skip if PVC is explicitly disabled
-	if enabled, exists := pvc.Annotations["pvc-chonker.io/enabled"]; exists && enabled == "false" {
-		return admission.Allowed("PVC expansion disabled")
+	if pvc.Annotations != nil {
+		if enabled, exists := pvc.Annotations["pvc-chonker.io/enabled"]; exists && enabled == "false" {
+			return admission.Allowed("PVC expansion disabled")
+		}
 	}
 
 	// Check if PVC has a group annotation
+	if pvc.Annotations == nil {
+		return admission.Allowed("no annotations")
+	}
 	groupName, hasGroup := pvc.Annotations["pvc-chonker.io/group"]
 	if !hasGroup {
 		return admission.Allowed("no group annotation")

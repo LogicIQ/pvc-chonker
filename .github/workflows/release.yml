@@ -29,6 +29,7 @@ jobs:
         VERSION: ${{ github.event.release.tag_name }}
         GIT_HASH: ${{ github.sha }}
       run: |
+        set -e
         LDFLAGS="-w -s -X main.version=${VERSION} -X main.gitHash=${GIT_HASH}"
         
         GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o pvc-chonker-linux-amd64 cmd/main.go
@@ -56,6 +57,9 @@ jobs:
       with:
         context: .
         push: true
+        platforms: linux/amd64,linux/arm64
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
         tags: |
           logiciq/pvc-chonker:${{ github.event.release.tag_name }}
           logiciq/pvc-chonker:latest
