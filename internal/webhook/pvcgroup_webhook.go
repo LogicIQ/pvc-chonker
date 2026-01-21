@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -89,10 +90,9 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 
 	// Create JSON patches for missing annotations
 	for key, value := range templateAnnotations {
-		escapedKey := "pvc-chonker.io~1" + key[len("pvc-chonker.io/"):]
 		patches = append(patches, map[string]interface{}{
 			"op":    "add",
-			"path":  "/metadata/annotations/" + escapedKey,
+			"path":  "/metadata/annotations/" + escapeJSONPointer(key),
 			"value": value,
 		})
 	}
@@ -127,6 +127,10 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 func getTemplateAnnotations(template pvcchonkerv1alpha1.PVCGroupTemplate, existing map[string]string) map[string]string {
 	result := make(map[string]string)
 
+	if existing == nil {
+		existing = make(map[string]string)
+	}
+
 	if template.Threshold != nil {
 		if _, exists := existing["pvc-chonker.io/threshold"]; !exists {
 			result["pvc-chonker.io/threshold"] = *template.Threshold
@@ -151,7 +155,26 @@ func getTemplateAnnotations(template pvcchonkerv1alpha1.PVCGroupTemplate, existi
 		}
 	}
 
+	if template.InodesThreshold != nil {
+		if _, exists := existing["pvc-chonker.io/inodes-threshold"]; !exists {
+			result["pvc-chonker.io/inodes-threshold"] = *template.InodesThreshold
+		}
+	}
+
+	if template.MinScaleUp != nil {
+		if _, exists := existing["pvc-chonker.io/min-scale-up"]; !exists {
+			result["pvc-chonker.io/min-scale-up"] = template.MinScaleUp.String()
+		}
+	}
+
 	return result
+}
+
+// escapeJSONPointer escapes a string for use in a JSON Pointer path (RFC 6901)
+func escapeJSONPointer(s string) string {
+	s = strings.ReplaceAll(s, "~", "~0")
+	s = strings.ReplaceAll(s, "/", "~1")
+	return s
 }
 
 // Default implements the admission.CustomDefaulter interface

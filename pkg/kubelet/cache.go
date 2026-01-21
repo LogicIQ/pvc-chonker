@@ -206,8 +206,7 @@ func (mc *MetricsCollector) fetchFromCustomURL(ctx context.Context) ([]byte, err
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			log.Printf("Warning: failed to close response body: %v", closeErr)
-			metrics.RecordKubeletClientRequest("failed")
+			log.Printf("Warning: failed to close response body for URL %s: %v", mc.kubeletURL, closeErr)
 		}
 	}()
 

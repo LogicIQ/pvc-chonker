@@ -85,7 +85,8 @@ func TestParsePVCAnnotations_SeparateThresholds(t *testing.T) {
 
 	config, err := ParsePVCAnnotations(pvc, global)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Errorf("unexpected error: %v", err)
+		return
 	}
 
 	if config.Threshold != 85.0 {

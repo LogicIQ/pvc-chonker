@@ -1,3 +1,4 @@
+# amazonq-ignore-next-line
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

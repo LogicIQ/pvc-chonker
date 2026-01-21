@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"math/rand"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -56,16 +57,17 @@ func getK8sClient(t *testing.T) client.Client {
 
 func generateRandomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		b[i] = charset[r.Intn(len(charset))]
 	}
 	return string(b)
 }
 
 func TestMain(m *testing.M) {
 	// Run all tests
-	m.Run()
+	os.Exit(m.Run())
 }
 
 func waitForPod(t *testing.T, podName, namespace string) {
@@ -139,7 +141,7 @@ func getOperatorLogs(t *testing.T) string {
 	
 	podName := pods.Items[0].Name
 	req := clientset.CoreV1().Pods(testNamespace).GetLogs(podName, &corev1.PodLogOptions{
-		TailLines: int64Ptr(2),
+		TailLines: int64Ptr(100),
 	})
 	
 	logs, err := req.Stream(ctx)

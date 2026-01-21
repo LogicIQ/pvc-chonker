@@ -206,9 +206,9 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	thresholdReached := volumeMetrics.UsagePercent >= config.Threshold
 	var fsType string
 	if volumeMetrics.InodesTotal > 0 {
-		thresholdReached = thresholdReached || volumeMetrics.InodesUsagePercent >= config.InodesThreshold
 		if volumeMetrics.InodesUsagePercent >= config.InodesThreshold {
 			fsType = r.getFilesystemType(ctx, pvc)
+			thresholdReached = true
 			if fsType == "ext3" || fsType == "ext4" {
 				log.Info("Inode threshold reached on fixed-inode filesystem - expansion will not resolve inode pressure",
 					"filesystem", fsType,
@@ -220,6 +220,8 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 					"inodesUsage", volumeMetrics.InodesUsagePercent,
 					"inodesThreshold", config.InodesThreshold)
 			}
+		} else {
+			thresholdReached = thresholdReached || volumeMetrics.InodesUsagePercent >= config.InodesThreshold
 		}
 	}
 
@@ -247,9 +249,6 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 	newSize := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
 	if volumeMetrics.InodesTotal > 0 {
 		if volumeMetrics.InodesUsagePercent >= config.InodesThreshold {
-			if fsType == "" {
-				fsType = r.getFilesystemType(ctx, pvc)
-			}
 			if fsType == "ext3" || fsType == "ext4" {
 				r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, "ExpandedInodePressure",
 					"PVC expanded from %s to %s due to inode pressure (storage: %.1f%%, inodes: %.1f%%) - WARNING: %s filesystem has fixed inode count, expansion will not resolve inode pressure",
@@ -312,8 +311,11 @@ func (r *PersistentVolumeClaimReconciler) getFilesystemType(ctx context.Context,
 	}
 
 	scName := *pvc.Spec.StorageClassName
+	fsType := r.storageCache.GetFsType(scName)
+	if fsType != "" {
+		return fsType
+	}
 
-	// Try to get from cache first to avoid redundant API calls
 	var sc storagev1.StorageClass
 	if err := r.Get(ctx, types.NamespacedName{Name: scName}, &sc); err != nil {
 		log := log.FromContext(ctx)
@@ -324,12 +326,16 @@ func (r *PersistentVolumeClaimReconciler) getFilesystemType(ctx context.Context,
 	metrics.RecordKubernetesClientRequest("get_storageclass_fstype", "success")
 
 	if fsType, exists := sc.Parameters["fsType"]; exists {
+		r.storageCache.SetFsType(scName, fsType)
 		return fsType
 	}
 	if fsType, exists := sc.Parameters["csi.storage.k8s.io/fstype"]; exists {
+		r.storageCache.SetFsType(scName, fsType)
 		return fsType
 	}
-	return "ext4"
+	defaultFs := "ext4"
+	r.storageCache.SetFsType(scName, defaultFs)
+	return defaultFs
 }
 
 func (r *PersistentVolumeClaimReconciler) ExpandPVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim, config *annotations.PVCConfig) error {

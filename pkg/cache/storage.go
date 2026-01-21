@@ -5,13 +5,15 @@ import (
 )
 
 type StorageClassCache struct {
-	cache map[string]bool
-	mutex sync.RWMutex
+	cache   map[string]bool
+	fsTypes map[string]string
+	mutex   sync.RWMutex
 }
 
 func NewStorageClassCache() *StorageClassCache {
 	return &StorageClassCache{
-		cache: make(map[string]bool),
+		cache:   make(map[string]bool),
+		fsTypes: make(map[string]string),
 	}
 }
 
@@ -28,8 +30,21 @@ func (c *StorageClassCache) Set(name string, expandable bool) {
 	c.cache[name] = expandable
 }
 
+func (c *StorageClassCache) GetFsType(name string) string {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+	return c.fsTypes[name]
+}
+
+func (c *StorageClassCache) SetFsType(name string, fsType string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.fsTypes[name] = fsType
+}
+
 func (c *StorageClassCache) Clear() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.cache = make(map[string]bool)
+	c.fsTypes = make(map[string]string)
 }

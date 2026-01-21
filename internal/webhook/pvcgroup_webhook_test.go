@@ -303,16 +303,13 @@ func TestPVCGroupMutator_HandleNonPVC(t *testing.T) {
 func jsonPathToAnnotationKey(jsonPath string) string {
 	// Convert JSON patch path encoding back to annotation key
 	// e.g., "pvc-chonker.io~1enabled" -> "pvc-chonker.io/enabled"
-	key := jsonPath
-	key = string([]rune(key)) // Handle any unicode issues
-	// Replace ~1 with /
 	result := ""
-	for i := 0; i < len(key); i++ {
-		if i < len(key)-1 && key[i] == '~' && key[i+1] == '1' {
+	for i := 0; i < len(jsonPath); i++ {
+		if i < len(jsonPath)-1 && jsonPath[i] == '~' && jsonPath[i+1] == '1' {
 			result += "/"
 			i++ // Skip the '1'
 		} else {
-			result += string(key[i])
+			result += string(jsonPath[i])
 		}
 	}
 	return result

@@ -363,7 +363,7 @@ func waitForPVCsCreated(t *testing.T, k8sClient client.Client, namespace string,
 		return len(pvcList.Items) >= minCount, nil
 	})
 	if err != nil {
-		t.Logf("Warning: PVCs not created in time: %v", err)
+		t.Fatalf("PVCs not created in time: %v", err)
 	}
 }
 
@@ -378,7 +378,7 @@ func waitForPVCGroupStatus(t *testing.T, k8sClient client.Client, name, namespac
 		return pvcGroup.Status.LastUpdated != nil, nil
 	})
 	if err != nil {
-		t.Logf("Warning: PVCGroup status not updated in time: %v", err)
+		t.Fatalf("PVCGroup status not updated in time: %v", err)
 	}
 }
 
@@ -393,6 +393,6 @@ func waitForPVCCreated(t *testing.T, k8sClient client.Client, name, namespace st
 		return true, nil
 	})
 	if err != nil {
-		t.Logf("Warning: PVC not created in time: %v", err)
+		t.Fatalf("PVC not created in time: %v", err)
 	}
 }

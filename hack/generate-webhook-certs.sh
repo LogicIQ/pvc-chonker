@@ -9,7 +9,8 @@ cd "$SCRIPT_DIR/.."
 # Generate new certificate with SANs
 openssl req -x509 -newkey rsa:2048 -keyout tls.key -out tls.crt -days 36500 -nodes \
   -subj "/CN=pvc-chonker-webhook-service.pvc-chonker-system.svc" \
-  -addext "subjectAltName=DNS:pvc-chonker-webhook-service.pvc-chonker-system.svc,DNS:pvc-chonker-webhook-service.pvc-chonker-system.svc.cluster.local,DNS:pvc-chonker-webhook-service"
+  -addext "subjectAltName=DNS:pvc-chonker-webhook-service.pvc-chonker-system.svc,DNS:pvc-chonker-webhook-service.pvc-chonker-system.svc.cluster.local,DNS:pvc-chonker-webhook-service" \
+  || { echo "Error: Failed to generate certificate" >&2; exit 1; }
 
 # Encode certificates with proper error handling
 TLS_CRT_B64=$(base64 -w 0 < tls.crt) || { echo "Error: Failed to encode tls.crt" >&2; exit 1; }

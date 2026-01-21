@@ -1,3 +1,4 @@
+# amazonq-ignore-next-line
 apiVersion: pvc-chonker.io/v1alpha1
 kind: PVCPolicy
 metadata:

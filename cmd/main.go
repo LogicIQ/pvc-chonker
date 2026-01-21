@@ -169,7 +169,11 @@ func run(cmd *cobra.Command, args []string) {
 	} else {
 		setupLog.Info("Using Kubernetes API proxy for kubelet metrics")
 	}
-	metricsCollector := kubelet.NewMetricsCollector(kubeletURL)
+	metricsCollector, err := kubelet.NewMetricsCollector(kubeletURL)
+	if err != nil {
+		setupLog.Error(nil, "unable to create metrics collector", "error", utils.SanitizeError(err))
+		os.Exit(1)
+	}
 
 	// Set Kubernetes clients on metrics collector
 	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
