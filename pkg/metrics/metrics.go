@@ -1,8 +1,6 @@
 package metrics
 
 import (
-	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
@@ -20,7 +18,7 @@ var (
 			Namespace: Namespace,
 			Subsystem: ResizerSubsystem,
 			Name:      "success_resize_total",
-			Help:      "Counter that indicates how many volume expansion processing resized succeed",
+			Help:      "Counter that indicates how many volume expansion resize operations succeed",
 		},
 		[]string{"persistentvolumeclaim", "namespace"},
 	)
@@ -30,7 +28,7 @@ var (
 			Namespace: Namespace,
 			Subsystem: ResizerSubsystem,
 			Name:      "failed_resize_total",
-			Help:      "Counter that indicates how many volume expansion processing resizes fail",
+			Help:      "Counter that indicates how many volume expansion resize operations fail",
 		},
 		[]string{"persistentvolumeclaim", "namespace", "reason"},
 	)
@@ -255,33 +253,29 @@ func UpdatePVCInodesMetrics(pvcName, namespace string, inodesUsagePercent float6
 	}
 }
 
-var registerOnce sync.Once
-
 func init() {
-	registerOnce.Do(func() {
-		metrics.Registry.MustRegister(
-			// Resizer metrics
-			SuccessResizeTotal,
-			FailedResizeTotal,
-			LoopSecondsTotal,
-			LimitReachedTotal,
-			ThresholdReachedTotal,
-			CooldownSkippedTotal,
-			ResizeInProgressTotal,
-			// Client metrics
-			KubernetesClientFailTotal,
-			KubernetesClientRequestsTotal,
-			KubeletClientFailTotal,
-			KubeletClientRequestsTotal,
-			KubeletClientResponseTime,
-			// Operational metrics
-			LastReconciliationTime,
-			ReconciliationStatus,
-			ManagedPVCsTotal,
-			PVCUsagePercent,
-			PVCCapacityBytes,
-			PVCInodesUsagePercent,
-			PVCInodesTotal,
-		)
-	})
+	metrics.Registry.MustRegister(
+		// Resizer metrics
+		SuccessResizeTotal,
+		FailedResizeTotal,
+		LoopSecondsTotal,
+		LimitReachedTotal,
+		ThresholdReachedTotal,
+		CooldownSkippedTotal,
+		ResizeInProgressTotal,
+		// Client metrics
+		KubernetesClientFailTotal,
+		KubernetesClientRequestsTotal,
+		KubeletClientFailTotal,
+		KubeletClientRequestsTotal,
+		KubeletClientResponseTime,
+		// Operational metrics
+		LastReconciliationTime,
+		ReconciliationStatus,
+		ManagedPVCsTotal,
+		PVCUsagePercent,
+		PVCCapacityBytes,
+		PVCInodesUsagePercent,
+		PVCInodesTotal,
+	)
 }

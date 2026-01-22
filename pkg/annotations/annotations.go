@@ -261,15 +261,15 @@ func NewGlobalConfig(threshold float64, inodesThreshold float64, increase string
 	} else {
 		// Validate increase format
 		increase = strings.TrimSpace(increase)
+		var err error
 		if strings.HasSuffix(increase, "%") {
 			percentStr := strings.TrimSuffix(increase, "%")
-			if _, err := strconv.ParseFloat(percentStr, 64); err != nil {
-				increase = DefaultIncrease
-			}
+			_, err = strconv.ParseFloat(percentStr, 64)
 		} else {
-			if _, err := resource.ParseQuantity(increase); err != nil {
-				increase = DefaultIncrease
-			}
+			_, err = resource.ParseQuantity(increase)
+		}
+		if err != nil {
+			increase = DefaultIncrease
 		}
 	}
 	if cooldown <= 0 {

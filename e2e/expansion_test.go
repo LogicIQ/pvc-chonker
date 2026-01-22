@@ -190,7 +190,11 @@ func TestCooldownPeriod(t *testing.T) {
 	if err != nil && !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("Failed to create cooldown PVC: %v", err)
 	}
-	defer clientset.CoreV1().PersistentVolumeClaims(testNamespace).Delete(ctx, "test-cooldown-pvc", metav1.DeleteOptions{})
+	defer func() {
+		if err := clientset.CoreV1().PersistentVolumeClaims(testNamespace).Delete(ctx, "test-cooldown-pvc", metav1.DeleteOptions{}); err != nil {
+			t.Logf("Warning: Failed to cleanup cooldown PVC: %v", err)
+		}
+	}()
 	
 	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
 		pvc, err := clientset.CoreV1().PersistentVolumeClaims(testNamespace).Get(ctx, "test-cooldown-pvc", metav1.GetOptions{})

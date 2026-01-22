@@ -96,15 +96,15 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	}
 	metrics.RecordKubernetesClientRequest("list_pvcs", "success")
 
-	managedPVCs := make([]corev1.PersistentVolumeClaim, 0, len(pvcs.Items))
+	totalPVCs := len(pvcs.Items)
+	managedPVCs := make([]corev1.PersistentVolumeClaim, 0, totalPVCs)
 	for i := range pvcs.Items {
 		if _, err := r.policyResolver.ResolvePVCConfig(ctx, &pvcs.Items[i], r.GlobalConfig); err == nil {
 			managedPVCs = append(managedPVCs, pvcs.Items[i])
 		}
 	}
-	pvcs.Items = managedPVCs
 
-	log.Info("Found PVCs", "total", len(pvcs.Items), "managed", len(managedPVCs))
+	log.Info("Found PVCs", "total", totalPVCs, "managed", len(managedPVCs))
 
 	log.V(1).Info("Fetching kubelet metrics")
 	metricsCache, err := r.MetricsCollector.GetAllVolumeMetrics(ctx)
@@ -124,26 +124,20 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 		log.V(1).Info("Found volume metrics", "pvc", key, "usage", vm.UsagePercent, "capacity", vm.CapacityBytes)
 	}
 	metrics.RecordKubeletClientRequest("success")
-	if metricsCache == nil {
-		log.Error(nil, "Metrics cache is nil after successful fetch")
-		metrics.ReconciliationStatus.WithLabelValues("failure").Set(1)
-		metrics.ReconciliationStatus.WithLabelValues("success").Set(0)
-		return
-	}
 
 	metrics.ManagedPVCsTotal.Set(float64(len(managedPVCs)))
 
 	semaphore := make(chan struct{}, r.MaxParallel)
 	var wg sync.WaitGroup
 
-	for i := range pvcs.Items {
+	for i := range managedPVCs {
 		wg.Add(1)
 		go func(pvc corev1.PersistentVolumeClaim) {
 			defer wg.Done()
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 			r.reconcilePVC(ctx, &pvc, metricsCache)
-		}(pvcs.Items[i])
+		}(managedPVCs[i])
 	}
 
 	wg.Wait()
@@ -152,7 +146,7 @@ func (r *PersistentVolumeClaimReconciler) reconcileAll(ctx context.Context) {
 	metrics.RecordLoopDuration(duration.Seconds())
 	metrics.ReconciliationStatus.WithLabelValues("success").Set(1)
 	metrics.ReconciliationStatus.WithLabelValues("failure").Set(0)
-	log.Info("Completed reconciliation cycle", "totalPVCs", len(pvcs.Items), "managedPVCs", len(managedPVCs), "duration", duration, "nextCycle", startTime.Add(r.WatchInterval).Format(time.RFC3339))
+	log.Info("Completed reconciliation cycle", "totalPVCs", totalPVCs, "managedPVCs", len(managedPVCs), "duration", duration, "nextCycle", startTime.Add(r.WatchInterval).Format(time.RFC3339))
 }
 
 func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim, metricsCache *kubelet.MetricsCache) {

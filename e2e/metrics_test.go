@@ -99,7 +99,7 @@ func TestOperatorLogs(t *testing.T) {
 	
 	expectedLogs := []string{
 		"reconcileAll",
-		"reconcil",
+		"reconcile", // Partial match for reconciliation-related logs
 	}
 	
 	for _, expected := range expectedLogs {

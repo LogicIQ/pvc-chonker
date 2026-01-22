@@ -29,11 +29,10 @@ func TestStorageClassCache(t *testing.T) {
 
 	// Test clearing cache
 	cache.Clear()
-	if _, exists := cache.Get("expandable-sc"); exists {
-		t.Error("Expected cache to be empty after clear")
-	}
-	if _, exists := cache.Get("non-expandable-sc"); exists {
-		t.Error("Expected cache to be empty after clear")
+	for _, key := range []string{"expandable-sc", "non-expandable-sc"} {
+		if _, exists := cache.Get(key); exists {
+			t.Error("Expected cache to be empty after clear")
+		}
 	}
 }
 
@@ -79,13 +78,17 @@ func helperStorageClass(name string, allowExpansion *bool) *storagev1.StorageCla
 	}
 }
 
+func isStorageClassExpandable(sc *storagev1.StorageClass) bool {
+	return sc.AllowVolumeExpansion != nil && *sc.AllowVolumeExpansion
+}
+
 func TestStorageClassCacheWithRealObjects(t *testing.T) {
 	cache := NewStorageClassCache()
 
 	// Test with expandable storage class
 	expandable := true
 	sc1 := helperStorageClass("gp3", &expandable)
-	cache.Set(sc1.Name, sc1.AllowVolumeExpansion != nil && *sc1.AllowVolumeExpansion)
+	cache.Set(sc1.Name, isStorageClassExpandable(sc1))
 
 	if result, exists := cache.Get("gp3"); !exists || !result {
 		t.Error("Expected gp3 storage class to be expandable")
@@ -94,7 +97,7 @@ func TestStorageClassCacheWithRealObjects(t *testing.T) {
 	// Test with non-expandable storage class
 	nonExpandable := false
 	sc2 := helperStorageClass("local", &nonExpandable)
-	cache.Set(sc2.Name, sc2.AllowVolumeExpansion != nil && *sc2.AllowVolumeExpansion)
+	cache.Set(sc2.Name, isStorageClassExpandable(sc2))
 
 	if result, exists := cache.Get("local"); !exists || result {
 		t.Error("Expected local storage class to be non-expandable")
@@ -102,7 +105,7 @@ func TestStorageClassCacheWithRealObjects(t *testing.T) {
 
 	// Test with nil AllowVolumeExpansion (defaults to false)
 	sc3 := helperStorageClass("default", nil)
-	cache.Set(sc3.Name, sc3.AllowVolumeExpansion != nil && *sc3.AllowVolumeExpansion)
+	cache.Set(sc3.Name, isStorageClassExpandable(sc3))
 
 	if result, exists := cache.Get("default"); !exists || result {
 		t.Error("Expected default storage class to be non-expandable when AllowVolumeExpansion is nil")

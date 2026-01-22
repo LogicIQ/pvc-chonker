@@ -180,7 +180,9 @@ func TestPVCGroupWebhook(t *testing.T) {
 	}
 	require.NoError(t, k8sClient.Create(ctx, ns))
 	defer func() {
-		_ = k8sClient.Delete(ctx, ns)
+		if err := k8sClient.Delete(ctx, ns); err != nil {
+			t.Logf("Failed to cleanup namespace: %v", err)
+		}
 	}()
 
 	// Create PVCGroup first
@@ -274,7 +276,9 @@ func TestPVCGroupWebhookE2E(t *testing.T) {
 	}
 	require.NoError(t, k8sClient.Create(ctx, ns))
 	defer func() {
-		_ = k8sClient.Delete(ctx, ns)
+		if err := k8sClient.Delete(ctx, ns); err != nil {
+			t.Logf("Failed to cleanup namespace: %v", err)
+		}
 	}()
 
 	// Create PVCGroup first

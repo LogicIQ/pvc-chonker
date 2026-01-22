@@ -418,7 +418,8 @@ func TestHelperFunctions(t *testing.T) {
 	if getBoolValue(nil, true) != true {
 		t.Error("getBoolValue with nil should return default")
 	}
-	if getBoolValue(&[]bool{false}[0], true) != false {
+	falseVal := false
+	if getBoolValue(&falseVal, true) != false {
 		t.Error("getBoolValue with value should return value")
 	}
 
@@ -426,7 +427,8 @@ func TestHelperFunctions(t *testing.T) {
 	if getFloat64Value(nil, 80.0) != 80.0 {
 		t.Error("getFloat64Value with nil should return default")
 	}
-	if getFloat64Value(&[]float64{90.0}[0], 80.0) != 90.0 {
+	floatVal := 90.0
+	if getFloat64Value(&floatVal, 80.0) != 90.0 {
 		t.Error("getFloat64Value with value should return value")
 	}
 
@@ -434,7 +436,8 @@ func TestHelperFunctions(t *testing.T) {
 	if getStringValue(nil, "default") != "default" {
 		t.Error("getStringValue with nil should return default")
 	}
-	if getStringValue(&[]string{"custom"}[0], "default") != "custom" {
+	strVal := "custom"
+	if getStringValue(&strVal, "default") != "custom" {
 		t.Error("getStringValue with value should return value")
 	}
 
