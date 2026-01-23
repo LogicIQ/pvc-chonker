@@ -24,7 +24,8 @@ const (
 	DefaultInodesThreshold = 80.0
 	DefaultIncrease        = "10%"
 	DefaultCooldown        = 15 * time.Minute
-	DefaultMinScaleUp      = 1 * 1024 * 1024 * 1024
+	DefaultMinScaleUpGiB   = 1
+	DefaultMinScaleUp      = DefaultMinScaleUpGiB * 1024 * 1024 * 1024 // 1 GiB
 )
 
 var ErrPVCNotManaged = fmt.Errorf("PVC not managed by pvc-chonker")
@@ -173,11 +174,7 @@ func (c *PVCConfig) CalculateNewSize(currentSize resource.Quantity) (resource.Qu
 	gibBoundary := int64(1024 * 1024 * 1024)
 	roundedBytes := ((newBytes + gibBoundary - 1) / gibBoundary) * gibBoundary
 
-	newSize := resource.NewQuantity(roundedBytes, resource.BinarySI)
-	if newSize == nil {
-		return resource.Quantity{}, fmt.Errorf("failed to create new size quantity")
-	}
-	return *newSize, nil
+	return *resource.NewQuantity(roundedBytes, resource.BinarySI), nil
 }
 
 func (c *PVCConfig) IsInCooldown() bool {
