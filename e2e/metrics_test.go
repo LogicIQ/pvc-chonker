@@ -54,35 +54,34 @@ func TestKubeletMetrics(t *testing.T) {
 	}
 	
 	metricsText := string(metricsData)
+	requiredMetrics := map[string]bool{
+		"kubelet_volume_stats_capacity_bytes":  false,
+		"kubelet_volume_stats_available_bytes": false,
+		"kubelet_volume_stats_inodes":          false,
+		"kubelet_volume_stats_inodes_used":     false,
+	}
+	hasPVCMetrics := false
 	
-	// Debug: log available metrics
-	lines := strings.Split(metricsText, "\n")
-	volumeMetricsCount := 0
-	for _, line := range lines {
-		if strings.Contains(line, "kubelet_volume") {
-			volumeMetricsCount++
-			if volumeMetricsCount <= 5 { // Log first 5 volume metrics
-				t.Logf("Found volume metric: %s", line)
+	for _, line := range strings.Split(metricsText, "\n") {
+		for metric := range requiredMetrics {
+			if strings.Contains(line, metric) {
+				requiredMetrics[metric] = true
 			}
 		}
-	}
-	t.Logf("Total volume metrics found: %d", volumeMetricsCount)
-	requiredMetrics := []string{
-		"kubelet_volume_stats_capacity_bytes",
-		"kubelet_volume_stats_available_bytes",
-		"kubelet_volume_stats_inodes",
-		"kubelet_volume_stats_inodes_used",
+		if strings.Contains(line, `persistentvolumeclaim="test-pvc"`) {
+			hasPVCMetrics = true
+		}
 	}
 	
-	for _, metric := range requiredMetrics {
-		if !strings.Contains(metricsText, metric) {
+	for metric, found := range requiredMetrics {
+		if !found {
 			t.Errorf("Missing required metric: %s", metric)
 		} else {
 			t.Logf("Found metric: %s", metric)
 		}
 	}
 	
-	if strings.Contains(metricsText, `persistentvolumeclaim="test-pvc"`) {
+	if hasPVCMetrics {
 		t.Log("Found test-pvc metrics")
 	} else {
 		t.Error("Missing test-pvc specific metrics")
@@ -119,11 +118,11 @@ func waitForVolumeMetrics(t *testing.T, nodeName string) {
 		req := clientset.CoreV1().RESTClient().Get().AbsPath(metricsPath)
 		result := req.Do(ctx)
 		if result.Error() != nil {
-			return false, nil
+			return false, result.Error()
 		}
 		metricsData, err := result.Raw()
 		if err != nil {
-			return false, nil
+			return false, err
 		}
 		return strings.Contains(string(metricsData), "kubelet_volume_stats_capacity_bytes"), nil
 	})

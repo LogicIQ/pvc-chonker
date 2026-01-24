@@ -15,7 +15,7 @@ openssl req -x509 -newkey rsa:2048 -keyout tls.key -out tls.crt -days 36500 -nod
 # Encode certificates with proper error handling
 TLS_CRT_B64=$(base64 -w 0 < tls.crt) || { echo "Error: Failed to encode tls.crt" >&2; exit 1; }
 TLS_KEY_B64=$(base64 -w 0 < tls.key) || { echo "Error: Failed to encode tls.key" >&2; exit 1; }
-CA_CRT_B64=$(base64 -w 0 < tls.crt) || { echo "Error: Failed to encode ca.crt" >&2; exit 1; }
+CA_CRT_B64=$(base64 -w 0 < tls.crt) || { echo "Error: Failed to encode CA certificate from tls.crt" >&2; exit 1; }
 
 # Create webhook secret manifest with actual base64 values
 cat > config/webhook/webhook-secret.yaml << EOF

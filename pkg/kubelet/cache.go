@@ -5,8 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -29,9 +27,10 @@ type MetricsCache struct {
 }
 
 type MetricsCollector struct {
-	client     client.Client
-	clientset  *kubernetes.Clientset
-	kubeletURL string
+	client      client.Client
+	clientset   *kubernetes.Clientset
+	kubeletURL  string
+	httpTimeout time.Duration
 }
 
 func NewMetricsCache() *MetricsCache {
@@ -47,7 +46,8 @@ func NewMetricsCollector(kubeletURL string) (*MetricsCollector, error) {
 		}
 	}
 	return &MetricsCollector{
-		kubeletURL: kubeletURL,
+		kubeletURL:  kubeletURL,
+		httpTimeout: 30 * time.Second,
 	}, nil
 }
 
@@ -64,13 +64,6 @@ func validateKubeletURL(kubeletURL string) error {
 	host := parsed.Hostname()
 	if host == "" {
 		return fmt.Errorf("URL must have a valid host")
-	}
-
-	ip := net.ParseIP(host)
-	if ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
-			return fmt.Errorf("private, loopback, and link-local IPs are not allowed")
-		}
 	}
 
 	blocked := []string{"169.254.169.254", "metadata.google.internal", "localhost"}
@@ -199,16 +192,12 @@ func (mc *MetricsCollector) fetchFromCustomURL(ctx context.Context) ([]byte, err
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: mc.httpTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch metrics: %w", err)
 	}
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			log.Printf("Warning: failed to close response body for URL %s: %v", mc.kubeletURL, closeErr)
-		}
-	}()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)

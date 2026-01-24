@@ -82,13 +82,6 @@ func getBoolValue(ptr *bool, defaultVal bool) bool {
 	return defaultVal
 }
 
-func getFloat64Value(ptr *float64, defaultVal float64) float64 {
-	if ptr != nil {
-		return *ptr
-	}
-	return defaultVal
-}
-
 func getThresholdValue(ptr *string, defaultVal float64) float64 {
 	if ptr != nil {
 		if val, err := parsePercentage(*ptr); err == nil {

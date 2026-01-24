@@ -11,12 +11,9 @@ import (
 // SanitizeForLogging removes characters that could be used for log injection attacks
 func SanitizeForLogging(input string) string {
 	var result strings.Builder
-	result.Grow(len(input))
 	for _, r := range input {
 		if unicode.IsPrint(r) && r != '\n' && r != '\r' && r != '\x1b' {
-			if _, err := result.WriteRune(r); err != nil {
-				return result.String()
-			}
+			result.WriteRune(r)
 		}
 	}
 	return result.String()

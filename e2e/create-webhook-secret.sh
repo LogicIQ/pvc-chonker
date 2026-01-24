@@ -82,7 +82,7 @@ if ! CA_BUNDLE=$(base64 < ca.crt | tr -d '\n'); then
     exit 1
 fi
 
-cat <<EOF | kubectl apply -f -
+if ! cat <<EOF | kubectl apply -f -
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingAdmissionWebhook
 metadata:
@@ -104,8 +104,7 @@ webhooks:
   sideEffects: None
   failurePolicy: Fail
 EOF
-
-if [ $? -ne 0 ]; then
+then
     echo "Error: Failed to create MutatingAdmissionWebhook"
     exit 1
 fi

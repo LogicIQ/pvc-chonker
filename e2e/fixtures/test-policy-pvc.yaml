@@ -1,10 +1,11 @@
+# amazonq-ignore-next-line
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: test-policy-pvc
   namespace: pvc-chonker-system
   annotations:
-    pvc-chonker.io/validate-namespace: "true"
+    pvc-chonker.io/enabled: "true"
   labels:
     test-policy: enabled  # Matches PVCPolicy selector
     pvc-chonker.io/policy-validation: "required"

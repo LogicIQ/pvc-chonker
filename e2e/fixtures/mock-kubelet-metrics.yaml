@@ -30,6 +30,21 @@ data:
     kubelet_volume_stats_inodes_used{namespace="pvc-chonker-system",persistentvolumeclaim="test-max-size-pvc"} 6553
     kubelet_volume_stats_inodes_used{namespace="pvc-chonker-system",persistentvolumeclaim="test-cooldown-pvc"} 6553
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: kube-system
+data:
+  default.conf: |
+    server {
+        listen 10255;
+        location /metrics {
+            add_header Content-Type text/plain;
+            alias /usr/share/nginx/html/metrics;
+        }
+    }
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -51,6 +66,13 @@ spec:
         ports:
         - containerPort: 10255
           hostPort: 10255
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 10m
+            memory: 32Mi
         volumeMounts:
         - name: metrics
           mountPath: /usr/share/nginx/html
@@ -76,18 +98,3 @@ spec:
   - port: 10255
     targetPort: 10255
   type: ClusterIP
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nginx-config
-  namespace: kube-system
-data:
-  default.conf: |
-    server {
-        listen 10255;
-        location /metrics {
-            add_header Content-Type text/plain;
-            alias /usr/share/nginx/html/metrics;
-        }
-    }

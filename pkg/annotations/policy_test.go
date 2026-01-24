@@ -16,8 +16,12 @@ import (
 
 func TestPolicyResolver_ResolvePVCConfig(t *testing.T) {
 	scheme := runtime.NewScheme()
-	_ = pvcchonkerv1alpha1.AddToScheme(scheme)
-	_ = corev1.AddToScheme(scheme)
+	if err := pvcchonkerv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add pvcchonker scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
 
 	globalConfig := &GlobalConfig{
 		Threshold:       80.0,
@@ -423,13 +427,13 @@ func TestHelperFunctions(t *testing.T) {
 		t.Error("getBoolValue with value should return value")
 	}
 
-	// Test getFloat64Value
-	if getFloat64Value(nil, 80.0) != 80.0 {
-		t.Error("getFloat64Value with nil should return default")
+	// Test getThresholdValue
+	if getThresholdValue(nil, 80.0) != 80.0 {
+		t.Error("getThresholdValue with nil should return default")
 	}
-	floatVal := 90.0
-	if getFloat64Value(&floatVal, 80.0) != 90.0 {
-		t.Error("getFloat64Value with value should return value")
+	thresholdVal := "90%"
+	if getThresholdValue(&thresholdVal, 80.0) != 90.0 {
+		t.Error("getThresholdValue with value should return value")
 	}
 
 	// Test getStringValue

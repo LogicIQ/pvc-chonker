@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,8 +25,11 @@ const testNamespace = "pvc-chonker-system"
 
 var clientset *kubernetes.Clientset
 var k8sClient client.Client
+var rng *rand.Rand
 
 func init() {
+	rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+	
 	cfg, err := config.GetConfig()
 	if err != nil {
 		panic(err)
@@ -57,10 +61,9 @@ func getK8sClient(t *testing.T) client.Client {
 
 func generateRandomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = charset[r.Intn(len(charset))]
+		b[i] = charset[rng.Intn(len(charset))]
 	}
 	return string(b)
 }
@@ -162,20 +165,15 @@ func int64Ptr(i int64) *int64 {
 	return &i
 }
 
-func stringPtr(s string) *string {
-	return &s
-}
-
 // sanitizeError sanitizes error messages for safe logging
 func sanitizeError(err error) string {
 	if err == nil {
 		return ""
 	}
-	// Remove all control characters including newlines, carriage returns, tabs, and ANSI escape sequences
+	// Remove control characters and ANSI escape sequences while preserving valid Unicode
 	var result strings.Builder
 	for _, r := range err.Error() {
-		// Only allow printable ASCII characters and spaces
-		if r >= 32 && r <= 126 {
+		if !unicode.IsControl(r) && r != '\u007f' {
 			result.WriteRune(r)
 		}
 	}

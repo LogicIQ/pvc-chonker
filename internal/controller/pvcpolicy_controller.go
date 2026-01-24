@@ -34,11 +34,6 @@ type PVCPolicyReconciler struct {
 func (r *PVCPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Initialize semaphore if not already done
-	if r.semaphore == nil {
-		r.semaphore = make(chan struct{}, 10)
-	}
-
 	// Acquire semaphore
 	r.semaphore <- struct{}{}
 	defer func() { <-r.semaphore }()
@@ -81,6 +76,9 @@ func (r *PVCPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 }
 
 func (r *PVCPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Initialize semaphore before any reconciliation occurs
+	r.semaphore = make(chan struct{}, 10)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pvcchonkerv1alpha1.PVCPolicy{}).
 		Watches(&corev1.PersistentVolumeClaim{},

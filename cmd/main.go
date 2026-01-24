@@ -56,6 +56,7 @@ func main() {
 	rootCmd.Flags().String("kubelet-url", "", "Custom kubelet metrics URL (for e2e testing, e.g. http://mock-service:8080)")
 	rootCmd.Flags().Duration("watch-interval", 5*time.Minute, "Interval for checking PVC usage")
 	rootCmd.Flags().Float64("default-threshold", 0, "Default storage threshold percentage")
+	rootCmd.Flags().Float64("default-inodes-threshold", 0, "Default inode threshold percentage")
 	rootCmd.Flags().String("default-increase", "", "Default expansion amount")
 	rootCmd.Flags().Duration("default-cooldown", 0, "Default cooldown period")
 	rootCmd.Flags().String("default-min-scale-up", "", "Default minimum scale-up amount")
@@ -155,7 +156,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	globalConfig := annotations.NewGlobalConfig(
 		viper.GetFloat64("default-threshold"),
-		0, // inodesThreshold - will use default
+		viper.GetFloat64("default-inodes-threshold"),
 		viper.GetString("default-increase"),
 		viper.GetDuration("default-cooldown"),
 		minScaleUpQty,

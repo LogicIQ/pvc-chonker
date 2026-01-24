@@ -27,113 +27,73 @@ func TestPVCGroupCoordination(t *testing.T) {
 
 	ctx := context.Background()
 	k8sClient := getK8sClient(t)
-
-	// Wait for operator to be ready
 	waitForOperator(t)
 
-	// Apply the test PVCGroup fixture
+	setupPVCGroupTest(t)
+	pvcGroup := triggerPVCGroupReconciliation(t, k8sClient, ctx)
+	validatePVCGroupStatus(t, k8sClient, ctx, pvcGroup)
+	validatePVCCoordination(t, k8sClient, ctx)
+
+	_ = executeBash("kubectl delete -f fixtures/test-pvcgroup.yaml --ignore-not-found=true")
+}
+
+func setupPVCGroupTest(t *testing.T) {
 	err := executeBash("kubectl apply -f fixtures/test-pvcgroup.yaml")
 	require.NoError(t, err, "Failed to apply PVCGroup fixture")
+	waitForPVCsCreated(t, getK8sClient(t), testNamespace, 2)
+}
 
-	// Wait for resources to be created
-	waitForPVCsCreated(t, k8sClient, testNamespace, 2)
-
-	// Debug: Check if PVCs were created
-	var pvcList corev1.PersistentVolumeClaimList
-	require.NoError(t, k8sClient.List(ctx, &pvcList, &client.ListOptions{Namespace: testNamespace}))
-	t.Logf("Found %d PVCs in %s namespace", len(pvcList.Items), testNamespace)
-	for _, pvc := range pvcList.Items {
-		storage := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
-		t.Logf("PVC %s: group=%s, enabled=%s, phase=%s, size=%s", pvc.Name, 
-			pvc.Annotations["pvc-chonker.io/group"], 
-			pvc.Annotations["pvc-chonker.io/enabled"],
-			pvc.Status.Phase,
-			storage.String())
-	}
-
-	// Check PVCGroup status
+func triggerPVCGroupReconciliation(t *testing.T, k8sClient client.Client, ctx context.Context) *pvcchonkerv1alpha1.PVCGroup {
 	var pvcGroup pvcchonkerv1alpha1.PVCGroup
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{
 		Name:      "test-pvcgroup",
 		Namespace: testNamespace,
 	}, &pvcGroup))
 
-	// Wait for PVCGroup controller to process
 	waitForPVCGroupStatus(t, k8sClient, "test-pvcgroup", testNamespace)
 
-	// Debug: Check operator logs
-	logs := getOperatorLogs(t)
-	if strings.Contains(logs, "PVCGroup reconciled") {
-		t.Log("PVCGroup controller is processing")
-	} else {
-		t.Log("PVCGroup controller may not be running")
-	}
-
-	// Manually trigger PVCGroup reconciliation by updating it multiple times
 	for i := 0; i < 3; i++ {
-		// Refetch the latest version before updating
 		require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{
 			Name:      "test-pvcgroup",
 			Namespace: testNamespace,
 		}, &pvcGroup))
-		
+
 		pvcGroup.Annotations = map[string]string{"test-trigger": fmt.Sprintf("%d", i+1)}
 		if err := k8sClient.Update(ctx, &pvcGroup); err != nil {
-			t.Logf("Update attempt %d failed (expected due to race condition): %v", i+1, err)
+			t.Logf("Update attempt %d failed: %v", i+1, err)
 			continue
 		}
 		waitForPVCGroupStatus(t, k8sClient, "test-pvcgroup", testNamespace)
-		
-		// Check status after each trigger
+
 		require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{
 			Name:      "test-pvcgroup",
 			Namespace: testNamespace,
 		}, &pvcGroup))
-		t.Logf("After trigger %d: MemberCount=%d, CurrentSize=%v", i+1, pvcGroup.Status.MemberCount, pvcGroup.Status.CurrentSize)
-		
+
 		if pvcGroup.Status.MemberCount >= 2 {
 			break
 		}
 	}
 
-	// Get updated status
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{
 		Name:      "test-pvcgroup",
 		Namespace: testNamespace,
 	}, &pvcGroup))
 
-	// Debug: Check final PVC states
-	require.NoError(t, k8sClient.List(ctx, &pvcList, &client.ListOptions{Namespace: testNamespace}))
-	t.Logf("Final PVC states:")
-	for _, pvc := range pvcList.Items {
-		storage := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
-		t.Logf("PVC %s: size=%s, phase=%s, group=%s, enabled=%s", 
-			pvc.Name,
-			storage.String(),
-			pvc.Status.Phase,
-			pvc.Annotations["pvc-chonker.io/group"],
-			pvc.Annotations["pvc-chonker.io/enabled"])
-		
-		// Count expected group members
-		if pvc.Annotations != nil && pvc.Annotations["pvc-chonker.io/group"] == "test-pvcgroup" && pvc.Annotations["pvc-chonker.io/enabled"] == "true" {
-			t.Logf("PVC %s should be counted as group member", pvc.Name)
-		}
-	}
+	return &pvcGroup
+}
 
-	t.Logf("PVCGroup status: MemberCount=%d, CurrentSize=%v", 
-		pvcGroup.Status.MemberCount, pvcGroup.Status.CurrentSize)
-
-	// Should have 2 active members (disabled PVC excluded)
+func validatePVCGroupStatus(t *testing.T, k8sClient client.Client, ctx context.Context, pvcGroup *pvcchonkerv1alpha1.PVCGroup) {
 	assert.True(t, pvcGroup.Status.MemberCount >= 2, "Should have at least 2 members")
-	
-	// Current size should be 200Gi (largest policy)
+
 	if assert.NotNil(t, pvcGroup.Status.CurrentSize) {
 		expected := resource.MustParse("200Gi")
-		assert.True(t, expected.Equal(*pvcGroup.Status.CurrentSize), 
+		assert.True(t, expected.Equal(*pvcGroup.Status.CurrentSize),
 			"Expected 200Gi, got %s", pvcGroup.Status.CurrentSize.String())
 	}
+}
 
-	// Check that PVC1 was coordinated to match PVC2 size
+func validatePVCCoordination(t *testing.T, k8sClient client.Client, ctx context.Context) {
 	var pvc1 corev1.PersistentVolumeClaim
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{
 		Name:      "test-pvc-1",
@@ -142,10 +102,9 @@ func TestPVCGroupCoordination(t *testing.T) {
 
 	expectedSize := resource.MustParse("200Gi")
 	actualSize := pvc1.Spec.Resources.Requests[corev1.ResourceStorage]
-	assert.True(t, expectedSize.Equal(actualSize), 
+	assert.True(t, expectedSize.Equal(actualSize),
 		"PVC1 should be coordinated to 200Gi, got %s", actualSize.String())
 
-	// Check that disabled PVC was not modified
 	var pvcDisabled corev1.PersistentVolumeClaim
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{
 		Name:      "test-pvc-disabled",
@@ -156,9 +115,6 @@ func TestPVCGroupCoordination(t *testing.T) {
 	disabledSize := pvcDisabled.Spec.Resources.Requests[corev1.ResourceStorage]
 	assert.True(t, originalSize.Equal(disabledSize),
 		"Disabled PVC should remain 50Gi, got %s", disabledSize.String())
-
-	// Cleanup
-	_ = executeBash("kubectl delete -f fixtures/test-pvcgroup.yaml --ignore-not-found=true")
 }
 
 func TestPVCGroupWebhook(t *testing.T) {
@@ -348,6 +304,24 @@ func boolPtr(b bool) *bool {
 }
 
 func executeBash(command string) error {
+	// Validate command is not empty
+	if strings.TrimSpace(command) == "" {
+		return fmt.Errorf("command cannot be empty")
+	}
+	
+	// Whitelist allowed command prefixes for safety
+	allowedPrefixes := []string{"kubectl", "helm", "task"}
+	isAllowed := false
+	for _, prefix := range allowedPrefixes {
+		if strings.HasPrefix(strings.TrimSpace(command), prefix) {
+			isAllowed = true
+			break
+		}
+	}
+	if !isAllowed {
+		return fmt.Errorf("command not allowed: must start with kubectl, helm, or task")
+	}
+	
 	cmd := exec.Command("bash", "-c", command)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -362,7 +336,7 @@ func waitForPVCsCreated(t *testing.T, k8sClient client.Client, namespace string,
 	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
 		var pvcList corev1.PersistentVolumeClaimList
 		if err := k8sClient.List(ctx, &pvcList, &client.ListOptions{Namespace: namespace}); err != nil {
-			return false, nil
+			return false, err
 		}
 		return len(pvcList.Items) >= minCount, nil
 	})
@@ -377,7 +351,7 @@ func waitForPVCGroupStatus(t *testing.T, k8sClient client.Client, name, namespac
 	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
 		var pvcGroup pvcchonkerv1alpha1.PVCGroup
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &pvcGroup); err != nil {
-			return false, nil
+			return false, err
 		}
 		return pvcGroup.Status.LastUpdated != nil, nil
 	})
@@ -392,7 +366,7 @@ func waitForPVCCreated(t *testing.T, k8sClient client.Client, name, namespace st
 	err := wait.PollUntilContextTimeout(ctx, 1*time.Second, 15*time.Second, true, func(ctx context.Context) (bool, error) {
 		var pvc corev1.PersistentVolumeClaim
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &pvc); err != nil {
-			return false, nil
+			return false, err
 		}
 		return true, nil
 	})

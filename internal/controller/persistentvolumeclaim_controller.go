@@ -214,8 +214,6 @@ func (r *PersistentVolumeClaimReconciler) reconcilePVC(ctx context.Context, pvc 
 					"inodesUsage", volumeMetrics.InodesUsagePercent,
 					"inodesThreshold", config.InodesThreshold)
 			}
-		} else {
-			thresholdReached = thresholdReached || volumeMetrics.InodesUsagePercent >= config.InodesThreshold
 		}
 	}
 
@@ -296,6 +294,16 @@ func (r *PersistentVolumeClaimReconciler) IsStorageClassExpandable(ctx context.C
 
 	expandable := sc.AllowVolumeExpansion != nil && *sc.AllowVolumeExpansion
 	r.storageCache.Set(scName, expandable)
+
+	// Cache filesystem type while we have the StorageClass
+	if fsType, exists := sc.Parameters["fsType"]; exists {
+		r.storageCache.SetFsType(scName, fsType)
+	} else if fsType, exists := sc.Parameters["csi.storage.k8s.io/fstype"]; exists {
+		r.storageCache.SetFsType(scName, fsType)
+	} else {
+		r.storageCache.SetFsType(scName, "ext4")
+	}
+
 	return expandable
 }
 
@@ -305,31 +313,11 @@ func (r *PersistentVolumeClaimReconciler) getFilesystemType(ctx context.Context,
 	}
 
 	scName := *pvc.Spec.StorageClassName
-	fsType := r.storageCache.GetFsType(scName)
-	if fsType != "" {
+	if fsType, exists := r.storageCache.GetFsType(scName); exists {
 		return fsType
 	}
 
-	var sc storagev1.StorageClass
-	if err := r.Get(ctx, types.NamespacedName{Name: scName}, &sc); err != nil {
-		log := log.FromContext(ctx)
-		log.Error(err, "Failed to get storage class for filesystem type detection", "storageClass", scName)
-		metrics.RecordKubernetesClientRequest("get_storageclass_fstype", "failed")
-		return "unknown"
-	}
-	metrics.RecordKubernetesClientRequest("get_storageclass_fstype", "success")
-
-	if fsType, exists := sc.Parameters["fsType"]; exists {
-		r.storageCache.SetFsType(scName, fsType)
-		return fsType
-	}
-	if fsType, exists := sc.Parameters["csi.storage.k8s.io/fstype"]; exists {
-		r.storageCache.SetFsType(scName, fsType)
-		return fsType
-	}
-	defaultFs := "ext4"
-	r.storageCache.SetFsType(scName, defaultFs)
-	return defaultFs
+	return "ext4"
 }
 
 func (r *PersistentVolumeClaimReconciler) ExpandPVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim, config *annotations.PVCConfig) error {

@@ -30,10 +30,11 @@ func (c *StorageClassCache) Set(name string, expandable bool) {
 	c.cache[name] = expandable
 }
 
-func (c *StorageClassCache) GetFsType(name string) string {
+func (c *StorageClassCache) GetFsType(name string) (string, bool) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
-	return c.fsTypes[name]
+	fsType, exists := c.fsTypes[name]
+	return fsType, exists
 }
 
 func (c *StorageClassCache) SetFsType(name string, fsType string) {

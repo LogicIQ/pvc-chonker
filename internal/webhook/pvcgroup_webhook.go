@@ -57,7 +57,7 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 		return admission.Allowed("no annotations")
 	}
 	groupName, hasGroup := pvc.Annotations["pvc-chonker.io/group"]
-	if !hasGroup {
+	if !hasGroup || groupName == "" {
 		return admission.Allowed("no group annotation")
 	}
 
@@ -68,9 +68,10 @@ func (m *PVCGroupMutator) Handle(ctx context.Context, req admission.Request) adm
 		Namespace: pvc.Namespace,
 	}, &pvcGroup); err != nil {
 		if client.IgnoreNotFound(err) == nil {
+			logger.V(1).Info("PVCGroup not found, skipping template application", "group", groupName, "namespace", pvc.Namespace)
 			return admission.Allowed("PVCGroup not found")
 		}
-		logger.Error(err, "Failed to get PVCGroup", "group", groupName)
+		logger.Error(err, "Failed to get PVCGroup", "group", groupName, "namespace", pvc.Namespace)
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 

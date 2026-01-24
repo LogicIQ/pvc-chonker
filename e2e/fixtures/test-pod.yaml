@@ -29,9 +29,15 @@ spec:
         echo "Usage after cleanup:"
         df -h /data
         echo "Sleeping 30s..."
-        echo ""
         sleep 30
       done
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+      limits:
+        memory: "128Mi"
+        cpu: "200m"
     volumeMounts:
     - name: storage
       mountPath: /data

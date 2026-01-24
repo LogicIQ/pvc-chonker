@@ -1,10 +1,12 @@
 package kubelet
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/logicIQ/pvc-chonker/pkg/metrics"
@@ -41,59 +43,38 @@ func (mc *MetricsCollector) GetVolumeMetrics(ctx context.Context, namespacedName
 	return vm, nil
 }
 
-var (
-	capacityRegex   = regexp.MustCompile(`kubelet_volume_stats_capacity_bytes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
-	availableRegex  = regexp.MustCompile(`kubelet_volume_stats_available_bytes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
-	inodesRegex     = regexp.MustCompile(`kubelet_volume_stats_inodes\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
-	inodesUsedRegex = regexp.MustCompile(`kubelet_volume_stats_inodes_used\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
-)
+var metricLineRegex = regexp.MustCompile(`^(kubelet_volume_stats_(?:capacity_bytes|available_bytes|inodes|inodes_used))\{.*namespace="([^"]+)".*persistentvolumeclaim="([^"]+)".*\}\s+(\d+)`)
 
 func (mc *MetricsCollector) parseVolumeMetrics(metricsText string, namespacedName types.NamespacedName) (*VolumeMetrics, error) {
 	var capacity, available, inodesTotal, inodesUsed int64
-	var err error
 
-	// Find capacity
-	for _, match := range capacityRegex.FindAllStringSubmatch(metricsText, -1) {
-		if len(match) >= 4 && match[1] == namespacedName.Namespace && match[2] == namespacedName.Name {
-			if capacity, err = strconv.ParseInt(match[3], 10, 64); err != nil {
-				return nil, fmt.Errorf("invalid capacity value: %w", err)
-			}
-			break
+	scanner := bufio.NewScanner(strings.NewReader(metricsText))
+	for scanner.Scan() {
+		line := scanner.Text()
+		match := metricLineRegex.FindStringSubmatch(line)
+		if len(match) != 5 || match[2] != namespacedName.Namespace || match[3] != namespacedName.Name {
+			continue
 		}
-	}
 
-	// Find available
-	for _, match := range availableRegex.FindAllStringSubmatch(metricsText, -1) {
-		if len(match) >= 4 && match[1] == namespacedName.Namespace && match[2] == namespacedName.Name {
-			if available, err = strconv.ParseInt(match[3], 10, 64); err != nil {
-				return nil, fmt.Errorf("invalid available value: %w", err)
-			}
-			break
+		value, err := strconv.ParseInt(match[4], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid metric value: %w", err)
+		}
+
+		switch match[1] {
+		case "kubelet_volume_stats_capacity_bytes":
+			capacity = value
+		case "kubelet_volume_stats_available_bytes":
+			available = value
+		case "kubelet_volume_stats_inodes":
+			inodesTotal = value
+		case "kubelet_volume_stats_inodes_used":
+			inodesUsed = value
 		}
 	}
 
 	if capacity == 0 || available == 0 {
 		return nil, fmt.Errorf("volume metrics not found for %s/%s", namespacedName.Namespace, namespacedName.Name)
-	}
-
-	// Find inodes (optional - not all filesystems expose inode metrics)
-	for _, match := range inodesRegex.FindAllStringSubmatch(metricsText, -1) {
-		if len(match) >= 4 && match[1] == namespacedName.Namespace && match[2] == namespacedName.Name {
-			if inodesTotal, err = strconv.ParseInt(match[3], 10, 64); err != nil {
-				return nil, fmt.Errorf("invalid inodes total value: %w", err)
-			}
-			break
-		}
-	}
-
-	// Find inodes used
-	for _, match := range inodesUsedRegex.FindAllStringSubmatch(metricsText, -1) {
-		if len(match) >= 4 && match[1] == namespacedName.Namespace && match[2] == namespacedName.Name {
-			if inodesUsed, err = strconv.ParseInt(match[3], 10, 64); err != nil {
-				return nil, fmt.Errorf("invalid inodes used value: %w", err)
-			}
-			break
-		}
 	}
 
 	var used int64

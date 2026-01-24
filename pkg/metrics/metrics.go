@@ -250,6 +250,9 @@ func UpdatePVCInodesMetrics(pvcName, namespace string, inodesUsagePercent float6
 	if inodesTotal > 0 {
 		PVCInodesUsagePercent.WithLabelValues(pvcName, namespace).Set(inodesUsagePercent)
 		PVCInodesTotal.WithLabelValues(pvcName, namespace).Set(float64(inodesTotal))
+	} else {
+		PVCInodesUsagePercent.DeleteLabelValues(pvcName, namespace)
+		PVCInodesTotal.DeleteLabelValues(pvcName, namespace)
 	}
 }
 

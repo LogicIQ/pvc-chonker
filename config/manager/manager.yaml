@@ -52,7 +52,7 @@ spec:
         - name: PVC_CHONKER_WATCH_INTERVAL
           value: "15s"
         - name: PVC_CHONKER_LOG_LEVEL
-          value: "debug"
+          value: "info"
         image: logiciq/pvc-chonker:v0.1.0
         imagePullPolicy: IfNotPresent
         name: manager

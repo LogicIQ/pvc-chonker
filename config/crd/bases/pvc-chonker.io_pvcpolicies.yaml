@@ -117,7 +117,7 @@ spec:
                   inodesThreshold:
                     description: InodesThreshold is the inode usage percentage that
                       triggers expansion
-                    pattern: ^([1-9][0-9]*(\.[0-9]*)?|0\.[1-9][0-9]*)%$
+                    pattern: ^([1-9][0-9]*(\.[0-9]+)?|0\.[1-9][0-9]*)%$
                     type: string
                   maxSize:
                     anyOf:
@@ -136,7 +136,7 @@ spec:
                   threshold:
                     description: Threshold is the storage usage percentage that triggers
                       expansion
-                    pattern: ^([1-9][0-9]*(\.[0-9]*)?|0\.[1-9][0-9]*)%$
+                    pattern: ^([1-9][0-9]*(\.[0-9]+)?|0\.[1-9][0-9]*)%$
                     type: string
                 type: object
             required:

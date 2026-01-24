@@ -6,8 +6,8 @@ nodes:
   - hostPath: /tmp/hostpathcsi
     containerPath: /var/lib/csi-hostpath-data
   extraPortMappings:
-  - containerPort: 10255
-    hostPort: 10255
+  - containerPort: 10250
+    hostPort: 10250
     protocol: TCP
 - role: worker
   extraMounts:

@@ -19,7 +19,7 @@ tasks:
       - task: go:fmt
 
   run:local:
-    desc: Run controller locally
+    desc: Run controller locally against configured cluster
     deps: [go:fmt, go:generate, go:manifests]
     cmds:
       - go run ./cmd/main.go
@@ -32,7 +32,7 @@ tasks:
       - |
         VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
         GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-        go build -ldflags="-X main.version=${VERSION} -X main.gitHash=${GIT_HASH}" -o bin/manager cmd/main.go
+        go build -ldflags="-X main.version=${VERSION} -X main.gitHash=${GIT_HASH}" -o ./bin/manager ./cmd/main.go
 
   go:fmt:
     desc: Format and vet Go code
@@ -103,12 +103,12 @@ tasks:
     desc: Run complete e2e test suite
     cmds:
       - echo "Running pre-test cleanup..."
-      - kubectl delete pvc --all -n pvc-chonker-system --ignore-not-found=true --timeout=60s || echo "PVC cleanup failed but continuing..."
-      - kubectl delete pvcgroups --all -n pvc-chonker-system --ignore-not-found=true --timeout=30s || echo "PVCGroup cleanup failed but continuing..."
-      - kubectl delete pvcpolicies --all -n pvc-chonker-system --ignore-not-found=true --timeout=30s || echo "PVCPolicy cleanup failed but continuing..."
-      - kubectl delete pods --all -n pvc-chonker-system --ignore-not-found=true --timeout=30s || echo "Pod cleanup failed but continuing..."
-      - kubectl delete ns pvc-chonker-system --ignore-not-found=true --timeout=120s || echo "Namespace cleanup failed but continuing..."
-      - kubectl delete ns -l "name~=webhook.*test" --ignore-not-found=true --timeout=120s || echo "Test namespace cleanup failed but continuing..."
+      - kubectl delete pvc --all -n pvc-chonker-system --ignore-not-found=true --timeout=60s || true
+      - kubectl delete pvcgroups --all -n pvc-chonker-system --ignore-not-found=true --timeout=30s || true
+      - kubectl delete pvcpolicies --all -n pvc-chonker-system --ignore-not-found=true --timeout=30s || true
+      - kubectl delete pods --all -n pvc-chonker-system --ignore-not-found=true --timeout=30s || true
+      - kubectl delete ns pvc-chonker-system --ignore-not-found=true --timeout=120s || true
+      - kubectl delete ns -l "name~=webhook.*test" --ignore-not-found=true --timeout=120s || true
       - echo "Starting e2e tests..."
       - cd e2e && task e2e
 

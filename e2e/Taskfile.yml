@@ -87,7 +87,7 @@ tasks:
       - kubectl apply -R -f ../config/
       - echo "Applying webhook configuration..."
       - kubectl apply -f ../config/webhook/
-      - sleep 5  # Wait for webhook resources to be created in etcd
+      - kubectl wait --for=condition=Established crd/pvcgroups.pvc-chonker.io --timeout=60s 2>/dev/null || true
       - |
         kubectl patch deployment controller-manager -n pvc-chonker-system -p '{
           "spec": {
@@ -109,11 +109,11 @@ tasks:
           }
         }'
       - kubectl rollout restart deployment controller-manager -n pvc-chonker-system
-      - sleep 10  # Wait for old pods to terminate before checking status
+      - kubectl wait --for=delete pod -l control-plane=controller-manager -n pvc-chonker-system --timeout=60s || true
       - kubectl get pods -n pvc-chonker-system
       - kubectl wait --for=condition=Available deployment/controller-manager -n pvc-chonker-system --timeout=180s
       - echo "Waiting for webhook server to be ready..."
-      - sleep 10  # Wait for webhook server to start accepting requests
+      - kubectl wait --for=condition=Ready pod -l control-plane=controller-manager -n pvc-chonker-system --timeout=60s
       - kubectl apply -f fixtures/test-pvc.yaml -n pvc-chonker-system
       - kubectl delete pod test-pod -n pvc-chonker-system --ignore-not-found=true
       - kubectl apply -f fixtures/test-pod.yaml -n pvc-chonker-system
@@ -129,7 +129,15 @@ tasks:
       - kubectl delete pod test-pod -n pvc-chonker-system --ignore-not-found=true
       - kubectl apply -f fixtures/test-pod.yaml -n pvc-chonker-system
       - kubectl wait --for=condition=Ready pod test-pod -n pvc-chonker-system --timeout=60s
-      - sleep 10  # Wait for volume metrics to be populated by kubelet
+      - |
+        for i in {1..15}; do
+          if kubectl get --raw /api/v1/nodes/{{.CLUSTER_NAME}}/proxy/metrics 2>/dev/null | grep -q "kubelet_volume_stats.*test-pvc"; then
+            echo "Volume metrics available"
+            break
+          fi
+          echo "Waiting for volume metrics... ($i/15)"
+          sleep 2
+        done
       - kubectl get --raw /api/v1/nodes/{{.CLUSTER_NAME}}/proxy/metrics | grep kubelet_volume_stats
       - echo "Volume metrics verified"
 
