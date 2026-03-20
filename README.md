@@ -2,6 +2,8 @@
 
 ![PVC Chonker](https://raw.githubusercontent.com/LogicIQ/pvc-chonker/main/docs/images/pvc-chonker.webp)
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/logicIQ/pvc-chonker)](https://goreportcard.com/report/github.com/logicIQ/pvc-chonker)
+
 A cloud-agnostic Kubernetes operator for automatic PVC expansion. Works with any CSI-compatible storage without external dependencies.
 
 🌐 **[Visit Project Page](https://logiciq.ca/pvc-chonker)**
